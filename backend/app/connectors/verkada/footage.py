@@ -235,10 +235,30 @@ def _cleanup_dir(root: Path, retention_hours: int) -> int:
     return removed
 
 
-def cleanup_old_clips(retention_hours: int = CLIP_RETENTION_HOURS) -> dict[str, int]:
-    """Delete clip + image files older than ``retention_hours``. Idempotent."""
-    clips = _cleanup_dir(CLIP_ROOT, retention_hours)
-    images = _cleanup_dir(IMAGE_ROOT, IMAGE_RETENTION_HOURS)
+def cleanup_old_clips(
+    clip_retention_hours: int | None = None,
+    image_retention_hours: int | None = None,
+) -> dict[str, int]:
+    """Delete clip + image files older than the given retention windows.
+
+    Each window can be ``None`` or ``0`` to skip (= unlimited / never
+    delete). Idempotent. Defaults fall back to the env-driven constants
+    so legacy code paths keep working.
+    """
+    if clip_retention_hours is None:
+        clip_retention_hours = CLIP_RETENTION_HOURS
+    if image_retention_hours is None:
+        image_retention_hours = IMAGE_RETENTION_HOURS
+    clips = (
+        _cleanup_dir(CLIP_ROOT, clip_retention_hours)
+        if clip_retention_hours and clip_retention_hours > 0
+        else 0
+    )
+    images = (
+        _cleanup_dir(IMAGE_ROOT, image_retention_hours)
+        if image_retention_hours and image_retention_hours > 0
+        else 0
+    )
     if clips or images:
         logger.info("media cleanup: clips=%d images=%d", clips, images)
     return {"removed": clips + images, "clips": clips, "images": images}

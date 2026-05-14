@@ -1,3 +1,4 @@
+from app.models.app_setting import AppSetting
 from app.models.connection import Connection
 from app.models.flow import Flow
 from app.models.gemini_pricing import GeminiPricing
@@ -12,6 +13,7 @@ from app.models.webhook_asset import WebhookAsset
 from app.models.webhook_event import WebhookEvent
 
 __all__ = [
+    "AppSetting",
     "Connection",
     "Flow",
     "GeminiPricing",

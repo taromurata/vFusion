@@ -586,7 +586,7 @@ function AssetGallery({ eventId }: { eventId: string }) {
   if (list.length === 0) return null;
   return (
     <Section title={`Media (${list.length})`}>
-      <div className="grid grid-cols-2 gap-2">
+      <div className="grid grid-cols-2 gap-2 items-start">
         {list.map((a) => (
           <AssetTile key={a.id} asset={a} />
         ))}
@@ -602,13 +602,17 @@ function AssetTile({ asset }: { asset: WebhookAsset }) {
     !asset.content_type || asset.content_type.startsWith("image/");
   return (
     <div className="border border-slate-800 rounded overflow-hidden bg-slate-950">
-      <div className="aspect-video bg-black flex items-center justify-center overflow-hidden">
+      <div className="bg-black flex items-center justify-center min-h-[100px]">
         {asset.status === "ready" && isImage ? (
-          <a href={fileUrl} target="_blank" rel="noreferrer">
+          // No fixed aspect-ratio container — portrait LPR crops, vehicle
+          // images, and full-frame snapshots all have wildly different
+          // shapes. Let the image dictate its own height so nothing is
+          // letterboxed or cropped.
+          <a href={fileUrl} target="_blank" rel="noreferrer" className="block w-full">
             <img
               src={fileUrl}
               alt={asset.source_field}
-              className="w-full h-full object-contain"
+              className="w-full h-auto block"
               loading="lazy"
             />
           </a>

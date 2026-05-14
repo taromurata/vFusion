@@ -256,15 +256,25 @@ async def download_pending_for_event(event_id: UUID) -> None:
         await _download_one(asset_id)
 
 
-async def cleanup_expired() -> dict[str, int]:
-    """Remove rows + files older than the retention window. Called hourly."""
-    now = datetime.now(timezone.utc)
+async def cleanup_expired(retention_hours: int | None = None) -> dict[str, int]:
+    """Remove rows + files older than ``retention_hours``. Called hourly.
+
+    ``retention_hours = 0`` or ``None`` skips the sweep entirely (the
+    "unlimited / never delete" setting). We sweep on ``created_at``
+    rather than the stored ``expires_at`` so that changing the retention
+    setting at runtime affects all rows immediately — old assets get
+    cleaned up on the next tick, not when their original expires_at
+    rolls around.
+    """
+    if not retention_hours or retention_hours <= 0:
+        return {"deleted_rows": 0, "removed_files": 0, "skipped": True}
+    cutoff = datetime.now(timezone.utc) - timedelta(hours=retention_hours)
     deleted_rows = 0
     removed_files = 0
     async with SessionLocal() as session:
         expired = (
             await session.execute(
-                select(WebhookAsset).where(WebhookAsset.expires_at < now)
+                select(WebhookAsset).where(WebhookAsset.created_at < cutoff)
             )
         ).scalars().all()
         for asset in expired:

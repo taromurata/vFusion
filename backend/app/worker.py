@@ -24,7 +24,7 @@ from uuid import UUID
 
 from arq.connections import RedisSettings
 from arq.cron import cron
-from sqlalchemy import select
+from sqlalchemy import delete as sa_delete, select
 from sqlalchemy.orm.attributes import flag_modified
 
 from app.assets import cleanup_expired as cleanup_expired_assets
@@ -459,10 +459,76 @@ async def crawl_verkada_catalog_cron(ctx: dict[str, Any]) -> list[dict[str, Any]
 
 
 async def cleanup_assets_cron(ctx: dict[str, Any]) -> dict[str, Any]:  # noqa: ARG001
-    """Drop webhook media + Gemini clips older than the retention window."""
-    assets = await cleanup_expired_assets()
-    clips = cleanup_old_clips()
-    return {"assets": assets, "clips": clips}
+    """Sweep expired filesystem assets + (optionally) old DB rows.
+
+    Reads all retention windows from ``app_settings`` at call time so a
+    UI-side change to the Settings card takes effect on the next tick
+    (no service restart needed). A value of 0 / null on any setting
+    means "keep forever" — the corresponding sweep is skipped.
+    """
+    from app import settings_store
+
+    asset_hours = await settings_store.get_int("webhook_asset_retention_hours")
+    clip_hours = await settings_store.get_int("gemini_clip_retention_hours")
+    image_hours = await settings_store.get_int("gemini_image_retention_hours")
+    event_days = await settings_store.get_int("webhook_event_retention_days")
+    run_days = await settings_store.get_int("run_retention_days")
+
+    assets = await cleanup_expired_assets(asset_hours)
+    clips = cleanup_old_clips(
+        clip_retention_hours=clip_hours,
+        image_retention_hours=image_hours,
+    )
+    events = await _cleanup_old_webhook_events(event_days)
+    runs = await _cleanup_old_runs(run_days)
+    return {"assets": assets, "clips": clips, "events": events, "runs": runs}
+
+
+async def _cleanup_old_webhook_events(retention_days: int) -> dict[str, int]:
+    """Delete webhook_events older than ``retention_days``. 0 = skip.
+
+    Cascade on the asset/run FKs takes care of dependent rows
+    (``webhook_assets.webhook_event_id`` is ON DELETE CASCADE).
+    """
+    if not retention_days or retention_days <= 0:
+        return {"deleted": 0, "skipped": True}
+    from datetime import datetime, timedelta, timezone
+
+    from app.models import WebhookEvent
+
+    cutoff = datetime.now(timezone.utc) - timedelta(days=retention_days)
+    async with SessionLocal() as session:
+        result = await session.execute(
+            sa_delete(WebhookEvent).where(WebhookEvent.received_at < cutoff)
+        )
+        await session.commit()
+    deleted = int(result.rowcount or 0)
+    if deleted:
+        logger.info("webhook_events cleanup: deleted=%d (cutoff=%s)", deleted, cutoff)
+    return {"deleted": deleted}
+
+
+async def _cleanup_old_runs(retention_days: int) -> dict[str, int]:
+    """Delete runs older than ``retention_days``. 0 = skip.
+
+    ``run_events`` rows are removed by ON DELETE CASCADE on their FK.
+    """
+    if not retention_days or retention_days <= 0:
+        return {"deleted": 0, "skipped": True}
+    from datetime import datetime, timedelta, timezone
+
+    from app.models import Run
+
+    cutoff = datetime.now(timezone.utc) - timedelta(days=retention_days)
+    async with SessionLocal() as session:
+        result = await session.execute(
+            sa_delete(Run).where(Run.created_at < cutoff)
+        )
+        await session.commit()
+    deleted = int(result.rowcount or 0)
+    if deleted:
+        logger.info("runs cleanup: deleted=%d (cutoff=%s)", deleted, cutoff)
+    return {"deleted": deleted}
 
 
 async def tick_schedule_flows(ctx: dict[str, Any]) -> dict[str, Any]:  # noqa: ARG001

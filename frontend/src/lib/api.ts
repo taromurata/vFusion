@@ -36,6 +36,22 @@ export interface PublicConfig {
   any_webhook_received: boolean;
 }
 
+// ---- Settings ----
+
+export interface SettingRow {
+  key: string;
+  label: string;
+  unit: string;        // "hours" | "days" | ""
+  description: string;
+  default: string;
+  allow_zero: boolean; // when true, 0 = unlimited
+  value: string | null;
+}
+
+export interface SettingsResponse {
+  items: SettingRow[];
+}
+
 // ---- Webhook events ----
 
 export type Family = "camera" | "access" | "lpr" | "sensor" | "intercom" | "unknown";

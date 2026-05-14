@@ -11,6 +11,7 @@ from app.api import (
     hooks,
     prompt_templates,
     runs,
+    settings as settings_api,
     stats,
     taxonomy,
     triggers,
@@ -65,6 +66,7 @@ app.include_router(stats.router)
 app.include_router(prompt_templates.router)
 app.include_router(byoa.router)
 app.include_router(config_api.router)
+app.include_router(settings_api.router)
 
 
 @app.get("/api/health")

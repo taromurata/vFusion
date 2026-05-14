@@ -1,7 +1,13 @@
-import { useQuery } from "@tanstack/react-query";
+import { useEffect, useState } from "react";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link } from "react-router-dom";
 
-import { apiGet } from "../lib/api";
+import {
+  apiGet,
+  apiPut,
+  SettingRow,
+  SettingsResponse,
+} from "../lib/api";
 
 
 interface TypeCount {
@@ -276,6 +282,8 @@ export default function Stats() {
             )}
           </Card>
 
+          <RetentionSettingsCard />
+
           <Card title="Coming soon">
             <ul className="text-sm text-slate-300 space-y-1 list-disc list-inside">
               <li>Daily webhook volume sparkline</li>
@@ -482,5 +490,117 @@ function BarList({
         );
       })}
     </ul>
+  );
+}
+
+
+// ---- Settings card ----
+//
+// Retention knobs for the cleanup cron. Each row reflects one
+// app_settings key; 0 means "keep forever / unlimited". The cron picks
+// up changes on its next tick (settings_store has a 30-second cache).
+
+function RetentionSettingsCard() {
+  const settings = useQuery({
+    queryKey: ["settings"],
+    queryFn: () => apiGet<SettingsResponse>("/api/settings"),
+  });
+  if (!settings.data) {
+    return (
+      <Card title="Retention">
+        <div className="text-sm text-slate-500">Loading…</div>
+      </Card>
+    );
+  }
+  return (
+    <Card title="Retention">
+      <p className="text-xs text-slate-400 mb-4">
+        How long captured data stays before the hourly cleanup cron sweeps it.
+        Set any row to <code className="font-mono text-slate-300">0</code> to
+        keep forever. Changes apply on the next cron tick (within ~30 seconds).
+      </p>
+      <div className="space-y-3">
+        {settings.data.items.map((row) => (
+          <SettingEditor key={row.key} row={row} />
+        ))}
+      </div>
+    </Card>
+  );
+}
+
+
+function SettingEditor({ row }: { row: SettingRow }) {
+  const qc = useQueryClient();
+  const [value, setValue] = useState<string>(row.value ?? row.default);
+  const [savedAt, setSavedAt] = useState<number | null>(null);
+
+  // If another tab edits the setting, refresh the local input.
+  useEffect(() => {
+    setValue(row.value ?? row.default);
+  }, [row.value, row.default]);
+
+  const save = useMutation({
+    mutationFn: (next: string) =>
+      apiPut<SettingRow>(`/api/settings/${row.key}`, { value: next }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["settings"] });
+      setSavedAt(Date.now());
+      window.setTimeout(() => setSavedAt(null), 1500);
+    },
+  });
+
+  const isUnlimited = value === "0" || value === "";
+  const isDirty = value !== (row.value ?? row.default);
+
+  return (
+    <div className="border border-white/10 rounded-md p-3 bg-white/5">
+      <div className="flex items-baseline justify-between gap-3 flex-wrap">
+        <div className="min-w-0 flex-1">
+          <div className="text-sm font-medium text-slate-200">{row.label}</div>
+          <div className="text-[11px] text-slate-500 mt-0.5">
+            {row.description}
+          </div>
+        </div>
+        <div className="text-[10px] text-slate-500 uppercase tracking-wider shrink-0">
+          default {row.default} {row.unit}
+        </div>
+      </div>
+      <div className="flex items-center gap-2 mt-3">
+        <input
+          type="number"
+          min={0}
+          value={value}
+          onChange={(e) => setValue(e.target.value)}
+          className="w-24 px-2 py-1.5 rounded bg-slate-950 border border-white/15 text-sm font-mono"
+        />
+        <span className="text-xs text-slate-400">{row.unit}</span>
+        {isUnlimited && row.allow_zero && (
+          <span className="text-[10px] text-amber-300 bg-amber-950/40 border border-amber-900/50 rounded px-1.5 py-0.5">
+            unlimited — never deleted
+          </span>
+        )}
+        <div className="flex-1" />
+        <button
+          onClick={() => setValue(row.default)}
+          className="text-xs px-2 py-1 rounded border border-white/15 text-slate-400 hover:text-slate-200 hover:border-white/30"
+          disabled={value === row.default}
+          title="Reset to default"
+        >
+          reset
+        </button>
+        <button
+          onClick={() => save.mutate(value)}
+          disabled={!isDirty || save.isPending}
+          className="text-xs px-3 py-1.5 rounded bg-sky-700 hover:bg-sky-600 text-white disabled:opacity-40 disabled:cursor-not-allowed"
+        >
+          {save.isPending ? "Saving…" : savedAt ? "Saved ✓" : "Save"}
+        </button>
+      </div>
+      {save.isError && (
+        <div className="text-xs text-rose-300 mt-2">
+          {(save.error as Error).message}
+        </div>
+      )}
+    </div>
   );
 }
