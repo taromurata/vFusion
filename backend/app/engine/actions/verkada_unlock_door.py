@@ -2,6 +2,7 @@
 
 from typing import Any
 
+from app.brand import BRAND_NAME
 from app.connectors.verkada.client import VerkadaClient
 from app.crypto import decrypt_secret
 from app.models import Connection
@@ -22,7 +23,7 @@ SCHEMA: dict[str, Any] = {
             "label": "Door",
             "type": "door_ref",
             "required": True,
-            "help": "Pick from doors vSplice has seen, or paste a door_id UUID.",
+            "help": f"Pick from doors {BRAND_NAME} has seen, or paste a door_id UUID.",
         },
     ]
 }

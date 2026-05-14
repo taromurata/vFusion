@@ -1,6 +1,8 @@
+import { useEffect } from "react";
 import { NavLink, Route, Routes, Navigate } from "react-router-dom";
 
 import OnboardingGate from "./components/OnboardingGate";
+import { useBrand } from "./lib/brand";
 import WebhookInbox from "./pages/WebhookInbox";
 import UnrecognizedEvents from "./pages/UnrecognizedEvents";
 import Flows from "./pages/Flows";
@@ -29,12 +31,18 @@ export default function App() {
 }
 
 function AppShell() {
+  const brand = useBrand();
+  // Keep the tab title in sync with the brand. Cheap to run; useEffect
+  // only fires when ``brand`` actually changes.
+  useEffect(() => {
+    document.title = brand;
+  }, [brand]);
   return (
     <div className="h-full flex flex-col">
       <header className="border-b border-white/10 bg-black/40 backdrop-blur-md">
         <div className="w-full px-6 h-14 flex items-center gap-6">
           <div className="font-semibold text-white tracking-tight">
-            vSplice
+            {brand}
           </div>
           <nav className="flex items-center gap-1">
             <NavLink

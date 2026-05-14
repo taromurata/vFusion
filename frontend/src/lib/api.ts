@@ -34,6 +34,9 @@ export interface PublicConfig {
   ephemeral: boolean;
   needs_onboarding: boolean;
   any_webhook_received: boolean;
+  // Product brand the dashboard renders in its header / modal / copy.
+  // Source-of-truth lives in backend/app/brand.py.
+  brand_name: string;
 }
 
 // ---- Settings ----

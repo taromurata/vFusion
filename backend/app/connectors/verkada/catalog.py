@@ -30,7 +30,7 @@ from app.models import VerkadaApiEndpoint, VerkadaApiSpec
 logger = logging.getLogger(__name__)
 
 
-# Namespaces vSplice knows about. New ones discovered upstream (e.g.
+# Namespaces vFusion knows about. New ones discovered upstream (e.g.
 # access_v2) just need to be added here.
 DEFAULT_NAMESPACES: list[str] = [
     "access_v1",

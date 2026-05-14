@@ -66,7 +66,7 @@ function OnboardingModal({ cfg }: { cfg: PublicConfig }) {
             First-run setup
           </div>
           <h1 className="text-2xl font-semibold text-white mt-1">
-            Welcome to vSplice
+            Welcome to {cfg.brand_name}
           </h1>
           <p className="text-sm text-slate-400 mt-1">
             We'll unlock the dashboard once your first real Verkada webhook arrives.

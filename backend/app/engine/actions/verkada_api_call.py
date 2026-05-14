@@ -6,7 +6,7 @@ the triggering webhook payload before sending the request.
 
 This is the workhorse action — every Verkada endpoint becomes usable as
 a flow step without writing new code. Adding new actions is now a
-question of how Verkada's API changes, not how vSplice's codebase
+question of how Verkada's API changes, not how vFusion's codebase
 changes.
 """
 

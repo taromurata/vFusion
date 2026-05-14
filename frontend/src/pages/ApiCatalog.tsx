@@ -10,6 +10,7 @@ import {
   ApiSpec,
 } from "../lib/api";
 import JsonView from "../components/JsonView";
+import { useBrand } from "../lib/brand";
 
 const METHOD_STYLE: Record<string, string> = {
   GET: "bg-sky-900 text-sky-200",
@@ -21,6 +22,7 @@ const METHOD_STYLE: Record<string, string> = {
 
 export default function ApiCatalog() {
   const qc = useQueryClient();
+  const brand = useBrand();
   const [namespace, setNamespace] = useState<string>("");
   const [search, setSearch] = useState("");
   const [recentOnly, setRecentOnly] = useState(false);
@@ -76,7 +78,7 @@ export default function ApiCatalog() {
         <div>
           <h1 className="text-2xl font-semibold text-white">API Catalog</h1>
           <p className="text-slate-400 text-sm mt-1">
-            vSplice fetches every Verkada OpenAPI spec every 4 hours and
+            {brand} fetches every Verkada OpenAPI spec every 4 hours and
             tracks added / changed / removed endpoints. This is your source of
             truth for what the Verkada API can do today.
           </p>

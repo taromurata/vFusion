@@ -26,6 +26,7 @@ from pydantic import BaseModel
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.brand import BRAND_NAME
 from app.config import settings
 from app.db import get_session
 from app.models import Connection, WebhookEvent
@@ -51,6 +52,10 @@ class PublicConfig(BaseModel):
     # the onboarding modal to show a "stack received its first request"
     # confirmation so users know the test-curl smoke check worked.
     any_webhook_received: bool = False
+    # Source-of-truth brand the frontend renders in its header / modals
+    # / copy. Defined in app/brand.py; changing it requires a code edit
+    # (and a redeploy) — there's no env var for it on purpose.
+    brand_name: str = BRAND_NAME
 
 
 async def _try_quick_tunnel() -> str | None:

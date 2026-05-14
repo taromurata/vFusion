@@ -9,6 +9,7 @@ import {
   Connection,
   ConnectionTypeSpec,
 } from "../lib/api";
+import { useBrand } from "../lib/brand";
 
 type FormMode =
   | { kind: "create"; type: string }
@@ -339,13 +340,14 @@ function StatusBadge({ ready }: { ready: boolean }) {
 
 
 function FirstRunState() {
+  const brand = useBrand();
   return (
     <div className="p-6 text-sm text-slate-300 space-y-2">
       <p className="font-medium text-slate-100">No Verkada orgs connected yet.</p>
       <p>
         Point a Verkada webhook at this server (
         <code className="bg-white/10 px-1 rounded text-xs">/hooks/&lt;anything&gt;</code>
-        ) and vSplice will auto-detect your org and prompt you to finish setup
+        ) and {brand} will auto-detect your org and prompt you to finish setup
         with just an API key.
       </p>
       <p>
@@ -368,6 +370,7 @@ function ConnectionFormModal({
   onClose: () => void;
   onSaved: () => void;
 }) {
+  const brand = useBrand();
   const isFinish = mode.kind === "finish";
   const conn = isFinish ? mode.connection : null;
 
@@ -403,7 +406,7 @@ function ConnectionFormModal({
 
   const title = isFinish ? `Finish setting up ${spec.label}` : `Add ${spec.label}`;
   const description = isFinish
-    ? "vSplice detected a new Verkada org from an incoming webhook. Add your API key to enable flow actions. Everything else is optional."
+    ? `${brand} detected a new Verkada org from an incoming webhook. Add your API key to enable flow actions. Everything else is optional.`
     : spec.description;
 
   const visibleFields = spec.fields.filter(

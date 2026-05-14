@@ -1,6 +1,6 @@
 """Resource pickers for the flow editor.
 
-These read what vSplice has *seen* in captured webhooks rather than
+These read what vFusion has *seen* in captured webhooks rather than
 calling the Verkada API. Cheap, always available, and surfaces real
 human-readable names ("Front Door", "HQ") instead of bare UUIDs.
 

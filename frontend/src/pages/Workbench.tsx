@@ -51,6 +51,15 @@ export default function Workbench() {
       <div className="max-w-3xl mx-auto">
         <h1 className="text-2xl font-semibold text-white">Workbench</h1>
         <p className="text-slate-300 text-sm mt-1">{meta.blurb}</p>
+        {tab === "helixr" && (
+          <p className="text-xs text-slate-500 mt-1.5 italic">
+            Helixr — name coined by{" "}
+            <span className="text-slate-300 not-italic font-medium">
+              Andrew Stone
+            </span>
+            .
+          </p>
+        )}
 
         <div className="mt-4 flex items-center gap-1 border-b border-white/10">
           {TABS.map((t) => {

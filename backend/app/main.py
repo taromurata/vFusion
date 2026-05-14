@@ -43,7 +43,9 @@ async def lifespan(app: FastAPI):
         await app.state.arq_pool.close()
 
 
-app = FastAPI(title="vSplice", version="0.3.0", lifespan=lifespan)
+from app.brand import BRAND_NAME
+
+app = FastAPI(title=BRAND_NAME, version="0.3.0", lifespan=lifespan)
 
 app.add_middleware(
     CORSMiddleware,

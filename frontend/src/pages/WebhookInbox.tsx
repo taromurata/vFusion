@@ -15,6 +15,7 @@ import {
 import JsonView from "../components/JsonView";
 import { FamilyBadge, SignatureBadge } from "../components/Badges";
 import PendingSetupBanner from "../components/PendingSetupBanner";
+import { useBrand } from "../lib/brand";
 import { useCameraLookup } from "../lib/cameras";
 
 const methodColor: Record<string, string> = {
@@ -383,6 +384,7 @@ function WebhookEndpointBanner() {
 
 
 function EmptyState() {
+  const brand = useBrand();
   return (
     <div className="p-6 text-sm text-slate-400 space-y-3">
       <p className="font-medium text-slate-200">Waiting for your first webhook…</p>
@@ -391,7 +393,7 @@ function EmptyState() {
         <code className="bg-slate-800 px-1 rounded text-slate-100">
           {API_BASE}/hooks/verkada
         </code>{" "}
-        (or any slug you want). When the first one arrives, vSplice will auto-detect
+        (or any slug you want). When the first one arrives, {brand} will auto-detect
         your org and prompt you to enter your API key.
       </p>
       <p className="text-xs text-slate-500">Smoke-test it locally if you want:</p>

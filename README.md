@@ -1,4 +1,4 @@
-# vSplice
+# vFusion
 
 ⚠️ **Beta — built by a Verkada SE, not an official Verkada product.** Expect breaking changes. This tool uses API keys with broad permissions and acts on real cameras, doors, and alarms. Review the code, run it on infrastructure you control, and don't point it at production orgs you can't afford to debug. No warranty; see [LICENSE](LICENSE).
 
@@ -45,12 +45,12 @@ docker compose version
 
 ### 2. Clone, configure, generate key — one paste
 
-This block clones into `~/vsplice`, copies `.env.example` → `.env`, generates a Fernet key (used to encrypt API keys at rest in Postgres), prints it, and writes it into `.env` for you:
+This block clones into `~/vfusion`, copies `.env.example` → `.env`, generates a Fernet key (used to encrypt API keys at rest in Postgres), prints it, and writes it into `.env` for you:
 
 ```bash
 cd ~
-git clone https://github.com/PacketTrace/verkadaRoute.git vsplice
-cd vsplice
+git clone https://github.com/PacketTrace/verkadaRoute.git vfusion
+cd vfusion
 cp .env.example .env
 FERNET_KEY=$(docker run --rm python:3.12-slim sh -c \
   "pip install -q cryptography && python -c 'from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())'")
@@ -119,7 +119,7 @@ The welcome modal in the dashboard shows your public webhook URL with a copy but
 - **Save**, then copy the signing secret Verkada shows (one-time view)
 - Click **Send test webhook**
 
-The dashboard auto-unlocks the moment the real webhook arrives. From there, vSplice's banner walks you through pasting the API key + signing secret to finish setup.
+The dashboard auto-unlocks the moment the real webhook arrives. From there, vFusion's banner walks you through pasting the API key + signing secret to finish setup.
 
 ## Quick tunnel (real public URL, no domain needed)
 
@@ -135,7 +135,7 @@ That's it. No account, no API key, no domain. Wait ~10 seconds for cloudflared t
 
 ## Production deploy with Cloudflare Tunnel
 
-For vSplice to receive real webhooks from Verkada's cloud, it needs a public URL. **Cloudflare Tunnel** gives you a free, stable HTTPS endpoint (`https://hooks.yourdomain.com`) without opening any ports on your router. We bundle the `cloudflared` connector as an opt-in compose profile, so the whole stack — vSplice plus its public ingress — comes up with one command.
+For vFusion to receive real webhooks from Verkada's cloud, it needs a public URL. **Cloudflare Tunnel** gives you a free, stable HTTPS endpoint (`https://hooks.yourdomain.com`) without opening any ports on your router. We bundle the `cloudflared` connector as an opt-in compose profile, so the whole stack — vFusion plus its public ingress — comes up with one command.
 
 ### What you need
 
@@ -148,7 +148,7 @@ For vSplice to receive real webhooks from Verkada's cloud, it needs a public URL
 1. Sign in to the [Cloudflare Zero Trust dashboard](https://one.dash.cloudflare.com/).
 2. Navigate to **Networks** → **Tunnels** → **Create a tunnel**.
 3. Choose **Cloudflared** as the connector type → **Next**.
-4. Name the tunnel `vsplice` → **Save tunnel**.
+4. Name the tunnel `vfusion` → **Save tunnel**.
 5. The next screen shows install commands for various OSes. **Copy the token** — it's the long string in those commands, starting with `eyJhIjoi...`. You don't need to run any of the install commands; our `docker-compose.yml` runs `cloudflared` for you. Click **Next**.
 6. On the **Public Hostnames** tab, click **Add a public hostname**:
    - **Subdomain**: `hooks`
@@ -160,7 +160,7 @@ For vSplice to receive real webhooks from Verkada's cloud, it needs a public URL
 ### 2. Add the token to `.env`
 
 ```bash
-cd ~/vsplice
+cd ~/vfusion
 echo "CF_TUNNEL_TOKEN=<paste-token-here>" >> .env
 ```
 
@@ -189,9 +189,9 @@ You should see 2–4 lines (Cloudflare connects to multiple POPs for redundancy)
 2. Copy the **signing secret** Verkada shows — you only see it once.
 3. Click **Send test webhook**.
 
-### 5. Finish setup in vSplice
+### 5. Finish setup in vFusion
 
-The test webhook will land in the **Webhook Inbox** within a couple seconds. vSplice auto-detects the org and shows a banner: **"New Verkada org detected — finish setup"**. Click it and paste:
+The test webhook will land in the **Webhook Inbox** within a couple seconds. vFusion auto-detects the org and shows a banner: **"New Verkada org detected — finish setup"**. Click it and paste:
 - Your **Verkada API key** (generate in Command → My Account → API Keys)
 - The **webhook signing secret** from step 4
 
@@ -200,7 +200,7 @@ Save. Done — flows can now read camera footage, post Helix events, unlock door
 ### Updating
 
 ```bash
-cd ~/vsplice
+cd ~/vfusion
 git pull
 docker compose --profile cloudflared up --build -d
 ```
