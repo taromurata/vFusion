@@ -41,6 +41,9 @@ services:
     volumes:
       - ./backend:/app
       - webhook_assets:/app/data
+      # Persisted FERNET_KEY lives here when FERNET_KEY env is unset.
+      # Survives container/image rebuilds; back up this volume for DR.
+      - vfusion_secrets:/app/secrets
     command: >
       sh -c "alembic upgrade head &&
              uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload"
@@ -60,6 +63,9 @@ services:
     volumes:
       - ./backend:/app
       - webhook_assets:/app/data
+      # Same key the backend uses — worker needs to decrypt API keys
+      # to run actions against Verkada / Gemini.
+      - vfusion_secrets:/app/secrets
     command: arq app.worker.WorkerSettings
 
   # Cloudflare Tunnel — production mode. Stable URL on your own domain.
@@ -125,3 +131,4 @@ services:
 volumes:
   postgres_data:
   webhook_assets:
+  vfusion_secrets:

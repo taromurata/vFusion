@@ -44,23 +44,18 @@ docker --version
 docker compose version
 ```
 
-### 2. Clone, configure, generate key — one paste
-
-This block clones into `~/vfusion`, copies `.env.example` → `.env`, generates a Fernet key (used to encrypt API keys at rest in Postgres), and writes it into `.env` for you:
+### 2. Clone and copy the env template
 
 ```bash
 cd ~
 git clone https://github.com/PacketTrace/verkadaRoute.git vfusion
 cd vfusion
 cp .env.example .env
-FERNET_KEY=$(docker run --rm python:3.12-slim sh -c \
-  "pip install -q cryptography && python -c 'from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())'")
-echo "Generated FERNET_KEY: $FERNET_KEY"
-sed -i.bak "s|^FERNET_KEY=.*|FERNET_KEY=$FERNET_KEY|" .env && rm .env.bak
-echo "Wrote FERNET_KEY to .env"
 ```
 
-Confirm with `grep ^FERNET_KEY .env`.
+That's it for setup. The encryption key (`FERNET_KEY`) generates itself on first backend boot and persists in the `vfusion_secrets` docker volume — you don't have to run anything. If you'd rather manage the key yourself (e.g. via 1Password), drop it into `.env` before starting the stack.
+
+> ⚠ **Back up the `vfusion_secrets` volume.** It holds the master key that encrypts every stored API key and signing secret. Losing it = losing all your stored credentials. `docker run --rm -v vfusion_secrets:/src -v $PWD:/dst alpine tar czf /dst/vfusion-secrets-backup.tar.gz -C /src .` exports it to a tarball.
 
 ---
 
@@ -193,7 +188,7 @@ vFusion handles credentials with broad permissions on real physical-security inf
 
 ### What's protected
 
-- **Secrets encrypted at rest.** Stored API keys and webhook signing secrets are encrypted with [Fernet (AES-128-CBC + HMAC-SHA-256)](https://cryptography.io/en/latest/fernet/) before hitting Postgres. The encryption key lives in the backend's `.env` as `FERNET_KEY` — never committed, generated per-install during bootstrap. If the DB leaks without the env, the keys stay opaque.
+- **Secrets encrypted at rest.** Stored API keys and webhook signing secrets are encrypted with [Fernet (AES-128-CBC + HMAC-SHA-256)](https://cryptography.io/en/latest/fernet/) before hitting Postgres. The encryption key auto-generates on first backend boot and persists in the `vfusion_secrets` docker volume — never committed, never exposed via the UI. If the DB leaks without the volume, the credentials inside stay opaque. (You can override the auto-generated key by setting `FERNET_KEY` in `.env` — useful for 1Password / KMS-driven deploys where the secret lives elsewhere.)
 - **Webhook authenticity via HMAC.** Every inbound webhook with a configured signing secret runs through `HMAC-SHA-256(secret, body|timestamp)` per Verkada's documented scheme, with 60-second replay tolerance and constant-time comparison. Mismatches are flagged in the inbox as **✗ bad sig**. Without a configured secret, webhooks land as `unverified` — they ingest but you can't prove they came from Verkada.
 - **Public tunnel locked down by path + method.** In both quick and production modes, the only thing reachable through the public URL is `POST /hooks/verkada`. Quick mode enforces this with a bundled Caddy reverse proxy (Caddyfile in `caddy/`). Production mode enforces it with the Cloudflare-dashboard `hooks/*` path filter. The admin API, dashboard, and synthetic `/hooks/<slug>` paths return 404 to the public internet — and the 404 (vs 405) keeps the path itself opaque to scanners.
 - **Generated signing secrets, not user-typed.** The Connection form's **Generate** button produces 48 random bytes from `crypto.getRandomValues` (URL-safe base64, ~64 chars). No prompts that tempt users to type "password123."
@@ -208,7 +203,7 @@ Be honest about the gaps so you don't deploy assuming things you shouldn't:
 
 - **No auth on the admin API or dashboard.** Anyone who can reach `http://<host>:15173` (or the backend's `:18080/api/*`) has full admin access — read all webhooks, list/edit/trigger flows, rotate secrets. Mitigation today: don't bind these ports to a public interface. Use **Tailscale** (or any VPN) for remote admin access, or expose the dashboard only on your LAN.
 - **Trust between Verkada and vFusion is webhook-secret-only.** With a configured signing secret, every webhook is HMAC-verified. Without one, anyone who knows your public URL can fire fake webhooks at `/hooks/verkada`. **Always set the signing secret on production deploys.**
-- **The Fernet key in `.env` is the master key.** Anyone with read access to `.env` AND the database can decrypt every stored credential. Treat `.env` like any other production secret — restricted file permissions, not in source control, rotated if a host is compromised.
+- **The Fernet key is the master key.** Anyone with read access to **both** the `vfusion_secrets` volume (or `FERNET_KEY` env var, if you've overridden it) **and** the database can decrypt every stored credential. Treat the volume + env like any other production secret: restrict host-level access, back up the volume, and rotate if a host is compromised.
 - **No multi-user / RBAC.** vFusion is single-tenant: every user of the dashboard has the same (full-admin) view. If you want to share access with teammates, scope it via VPN access, not in-app permissions.
 
 ### Threat model in one line
