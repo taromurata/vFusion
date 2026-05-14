@@ -49,7 +49,7 @@ CONNECTION_TYPES: dict[str, dict[str, Any]] = {
         "fields": [
             {"name": "org_id", "label": "Verkada Org ID", "type": "text", "required": True, "help": f"UUID, e.g. fe46589d-cb2a-4bee-… Auto-filled when {BRAND_NAME} detects a new org from an incoming webhook."},
             {"name": "api_key", "label": "API key", "type": "secret", "required": True, "help": "Needed for action nodes (door unlock, etc.). The one thing you actually have to provide to get up and running."},
-            {"name": "webhook_signing_secret", "label": "Webhook signing secret", "type": "secret", "required": False, "help": "Optional. Provide to enable HMAC verification of inbound webhooks. Get it from Verkada Command → Webhooks."},
+            {"name": "webhook_signing_secret", "label": "Webhook signing secret", "type": "secret", "required": False, "generate": True, "help": "Optional but recommended. Click Generate, copy the value, and paste it into Verkada Command → Webhooks → Shared secret. The same value lives on both sides — it's just an HMAC key that lets us verify each webhook came from your Verkada org."},
             {"name": "region", "label": "API region", "type": "text", "required": False, "help": "e.g. api.verkada.com (leave blank for default)"},
         ],
     }

@@ -446,15 +446,13 @@ function ConnectionFormModal({
 
         {visibleFields.map((f) => (
           <Field key={f.name} label={f.label} help={f.help} required={f.required}>
-            <input
-              type={f.type === "secret" ? "password" : "text"}
+            <SecretInput
+              spec={f}
               value={values[f.name] ?? ""}
-              onChange={(e) =>
-                setValues((v) => ({ ...v, [f.name]: e.target.value }))
+              onChange={(next) =>
+                setValues((v) => ({ ...v, [f.name]: next }))
               }
-              className="w-full px-2 py-1.5 rounded bg-white/5 border border-white/15 focus:outline-none focus:border-sky-500 text-sm font-mono"
-              autoComplete={f.type === "secret" ? "new-password" : "off"}
-              placeholder={isFinish && f.type === "secret" ? "leave blank to keep existing" : undefined}
+              isFinish={isFinish}
             />
           </Field>
         ))}
@@ -494,6 +492,91 @@ function ConnectionFormModal({
           </button>
         </div>
       </div>
+    </div>
+  );
+}
+
+
+/**
+ * Renders any connection field (text / secret) plus, when the spec
+ * carries ``generate: true``, an inline pair of buttons:
+ *
+ *   - **Generate** — fills the field with 48 random bytes encoded as
+ *     URL-safe base64 (~64 chars). Cryptographically secure via
+ *     ``crypto.getRandomValues``.
+ *   - **Copy** — shows up only once the field has a value, since the
+ *     whole point is to paste the same string into Verkada Command.
+ *
+ * The field briefly switches from password mask to plain text right
+ * after generation so the user can see what they're about to copy. It
+ * masks again as soon as they click away.
+ */
+function SecretInput({
+  spec,
+  value,
+  onChange,
+  isFinish,
+}: {
+  spec: { name: string; type: "text" | "secret"; generate?: boolean };
+  value: string;
+  onChange: (next: string) => void;
+  isFinish: boolean;
+}) {
+  const [revealed, setRevealed] = useState(false);
+  const [copied, setCopied] = useState(false);
+
+  const generate = () => {
+    const bytes = new Uint8Array(48);
+    crypto.getRandomValues(bytes);
+    // URL-safe base64 without padding: matches token_urlsafe-style.
+    let b64 = btoa(String.fromCharCode(...bytes));
+    b64 = b64.replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+    onChange(b64);
+    setRevealed(true);
+  };
+
+  const copy = async () => {
+    await navigator.clipboard.writeText(value);
+    setCopied(true);
+    window.setTimeout(() => setCopied(false), 1500);
+  };
+
+  const isSecret = spec.type === "secret";
+  const inputType = isSecret && !revealed ? "password" : "text";
+
+  return (
+    <div className="flex items-center gap-2">
+      <input
+        type={inputType}
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        onBlur={() => setRevealed(false)}
+        className="flex-1 px-2 py-1.5 rounded bg-white/5 border border-white/15 focus:outline-none focus:border-sky-500 text-sm font-mono"
+        autoComplete={isSecret ? "new-password" : "off"}
+        placeholder={isFinish && isSecret ? "leave blank to keep existing" : undefined}
+      />
+      {spec.generate && (
+        <>
+          <button
+            type="button"
+            onClick={generate}
+            className="shrink-0 text-xs px-2 py-1.5 rounded border border-white/15 text-slate-200 hover:bg-white/10"
+            title="Generate a new random secret"
+          >
+            Generate
+          </button>
+          {value && (
+            <button
+              type="button"
+              onClick={copy}
+              className="shrink-0 text-xs px-2 py-1.5 rounded border border-white/15 text-slate-200 hover:bg-white/10"
+              title="Copy to clipboard so you can paste into Verkada Command"
+            >
+              {copied ? "Copied" : "Copy"}
+            </button>
+          )}
+        </>
+      )}
     </div>
   );
 }

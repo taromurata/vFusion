@@ -127,6 +127,11 @@ export interface ConnectionFieldSpec {
   type: "text" | "secret";
   required: boolean;
   help?: string;
+  // If true, the form renders a "Generate" button next to the input
+  // that fills it with a cryptographically random string. Plus a Copy
+  // button once the field has a value. For shared-secret-style fields
+  // where the user has to paste the same value into both systems.
+  generate?: boolean;
 }
 
 export interface ConnectionTypeSpec {
