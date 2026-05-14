@@ -104,10 +104,10 @@ curl -X POST "$BASE/hooks/verkada" \
       "license_plate_number": "BVZ0938",
       "confidence": 0.9379871428571429,
       "crop": [0.2533212900161743, 0.3052724301815033, 0.10247643291950226, 0.1325235664844513],
-      "image_url": "https://ibb.co/nsShXXSs",
+      "image_url": "https://i.ibb.co/93CbvzhZ/5-13-2026-6-35-11-PM-3rd-Ave-Lobby-West-CD63-E-Demo-Verkada-Snapshot.jpg",
       "license_plate_state": "us-wa",
       "license_plate_state_confidence": 0.7,
-      "vehicle_image_url": "https://ibb.co/cX76vMwY"
+      "vehicle_image_url": "https://i.ibb.co/Y7Gv55G7/Screenshot-2026-05-13-at-6-33-20-PM.png"
     }
   }'
 ```
