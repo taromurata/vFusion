@@ -1,6 +1,19 @@
 # vSplice
 
-Self-hosted, Verkada-flavored workflow automation — a visual router for webhooks and API events. Think n8n/make.com, but built around the Verkada API surface (Helix, Access, etc.).
+Ever wish you could build you could splice together custom Verkada pipelines? Now it's possible by just using a UI and you don't have to type a single line of code. Self-hosted, Verkada-flavored workflow automation — a visual router for webhooks and API events. Think Zapier/n8/make.com, but built around the Verkada API surface (Helix, Access, etc.).
+
+## Features
+
+- 📥 **Webhook inbox** — catch any Verkada webhook at `/hooks/*`, auto-classify into family (camera / access / lpr / sensor / intercom), auto-detect new orgs on first sight
+- 🎨 **Visual flow editor** — drag-and-drop canvas (React Flow) for event-driven automations. Conditions, branches, per-step ▶ Run button for testing
+- 🎥 **Gemini video analysis** — pull a historical clip from any Verkada camera at trigger time, send to Gemini (2.5 / 3.x Flash or Pro), get AI summary back. Or analyze a single live frame for ~10× cost savings
+- 🚪 **Verkada actions** — unlock doors, post Helix events (schema-aware attribute validation), or call any cataloged endpoint generically
+- 📚 **API catalog** — auto-syncs every Verkada OpenAPI spec every 4 hours, generates structured request forms for path / query / body params on every endpoint
+- ⏰ **Triggers** — Verkada webhooks + scheduled jobs (interval / daily / weekly)
+- 🧪 **Workbench** — one-shot Gemini test page. Pick a camera, write a prompt, optionally chain a Helix post — without building a full flow first. "Run it back" to rehydrate any past test
+- 📊 **Stats & cost** — ingest counters (24h / 7d / 30d), top event types with inbox drill-down, Gemini spend tracking per model, real-time server load (CPU / memory / disk)
+- 🌍 **Public URLs built-in** — three deploy modes: LAN-only, quick tunnel (free TryCloudflare, zero setup), named tunnel (your own domain). URL auto-displayed in the UI banner
+- 🔐 **Secrets at rest** — Fernet encryption for stored API keys + signing secrets, HMAC webhook signature verification, sensitive headers redacted before persistence
 
 ## Three ways to run
 
