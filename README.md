@@ -82,10 +82,13 @@ docker compose logs -f backend     # wait for "Uvicorn running on http://0.0.0.0
 
 ### 5. Send a test webhook
 
-Fire a realistic LPR event at your endpoint. Use either `http://localhost:18080` (LAN-only) or your trycloudflare URL (quick tunnel) — the `BASE` line below is just so you don't have to edit the URL twice:
+Fire a realistic LPR event at your endpoint. Pick one of these for `BASE`:
+
+- `http://localhost:18080` if you're testing the LAN-only path
+- your trycloudflare URL (e.g. `https://flying-purple-cat-1234.trycloudflare.com`) if you're testing the quick tunnel
 
 ```bash
-BASE=http://localhost:18080   # or: BASE=https://your-trycloudflare-url
+BASE=http://localhost:18080
 
 curl -X POST "$BASE/hooks/verkada" \
   -H "Content-Type: application/json" \
