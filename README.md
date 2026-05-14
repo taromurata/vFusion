@@ -1,6 +1,10 @@
 # vSplice
 
-Ever wish you could build you could splice together custom Verkada pipelines? Now it's possible by just using a UI and you don't have to type a single line of code. Self-hosted, Verkada-flavored workflow automation — a visual router for webhooks and API events. Think Zapier/n8/make.com, but built around the Verkada API surface (Helix, Access, etc.).
+⚠️ **Beta — built by a Verkada SE, not an official Verkada product.** Expect breaking changes. This tool uses API keys with broad permissions and acts on real cameras, doors, and alarms. Review the code, run it on infrastructure you control, and don't point it at production orgs you can't afford to debug. No warranty; see [LICENSE](LICENSE).
+
+Ever wish you could splice together custom Verkada API pipelines? Now it's possible by just using a UI and you don't have to type a single line of code. 
+
+Self-hosted, Verkada-flavored workflow automation — a visual router for webhooks and API events. Think Zapier/n8/make.com, but built around the Verkada API surface (Helix, Access, etc.).
 
 ## Features
 
