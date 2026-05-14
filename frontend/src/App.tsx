@@ -11,7 +11,7 @@ import ApiCatalog from "./pages/ApiCatalog";
 import SettingsPage from "./pages/Settings";
 import Stats from "./pages/Stats";
 import Templates from "./pages/Templates";
-import Workbench from "./pages/Byoa";
+import Workbench from "./pages/Workbench";
 
 // Header + nav adopt the a prior demo app "BYOA" glass aesthetic so the
 // animated Vanta NET background renders through the chrome.

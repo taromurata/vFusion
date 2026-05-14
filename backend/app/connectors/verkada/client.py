@@ -148,6 +148,68 @@ class VerkadaClient:
             f"unexpected list_helix_event_types response shape: {type(data).__name__}"
         )
 
+    async def create_helix_event_type(
+        self, name: str, event_schema: dict[str, Any]
+    ) -> dict[str, Any]:
+        """Create a new Helix video-tagging event type.
+
+        Endpoint: ``POST /cameras/v1/video_tagging/event_type``.
+        Body: ``{"name": str, "event_schema": {attr: type, ...}}``.
+        Returns the newly-created event type body — Verkada includes the
+        assigned ``event_type_uid`` in the response.
+        """
+        result = await self.request(
+            "POST",
+            "/cameras/v1/video_tagging/event_type",
+            json_body={"name": name, "event_schema": event_schema},
+        )
+        if result["status_code"] >= 400:
+            raise VerkadaApiError(
+                f"create_helix_event_type failed: status={result['status_code']} body={result['body']!r}"
+            )
+        body = result["body"]
+        if not isinstance(body, dict):
+            raise VerkadaApiError(
+                f"unexpected create_helix_event_type response shape: {type(body).__name__}"
+            )
+        return body
+
+    async def update_helix_event_type(
+        self,
+        event_type_uid: str,
+        *,
+        name: str | None = None,
+        event_schema: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        """Update an existing Helix event type's name and/or schema.
+
+        Endpoint: ``PATCH /cameras/v1/video_tagging/event_type?event_type_uid=...``.
+        Body fields are both optional — pass only what you want changed.
+        """
+        patch_body: dict[str, Any] = {}
+        if name is not None:
+            patch_body["name"] = name
+        if event_schema is not None:
+            patch_body["event_schema"] = event_schema
+        if not patch_body:
+            raise ValueError("update_helix_event_type called with no fields to change")
+        result = await self.request(
+            "PATCH",
+            "/cameras/v1/video_tagging/event_type",
+            query={"event_type_uid": event_type_uid},
+            json_body=patch_body,
+        )
+        if result["status_code"] >= 400:
+            raise VerkadaApiError(
+                f"update_helix_event_type failed: status={result['status_code']} body={result['body']!r}"
+            )
+        body = result["body"]
+        if not isinstance(body, dict):
+            raise VerkadaApiError(
+                f"unexpected update_helix_event_type response shape: {type(body).__name__}"
+            )
+        return body
+
     async def unlock_door(self, door_id: str) -> dict[str, Any]:
         result = await self._post("/access/v1/door/admin_unlock", {"door_id": door_id})
         if result["status_code"] >= 400:

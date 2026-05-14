@@ -255,16 +255,6 @@ export default function Byoa() {
 
   return (
     <div className="max-w-3xl mx-auto space-y-6">
-      <div>
-        <h1 className="text-2xl font-semibold text-white">Workbench</h1>
-        <p className="text-slate-300 text-sm mt-1">
-          One-shot Gemini run. Pick a camera, write a prompt, see what comes
-          back — without baking it into a flow first. Useful for iterating
-          on prompts and confirming a model can actually do what you're
-          imagining before wiring it up.
-        </p>
-      </div>
-
       {noConnections && (
         <Card>
           <div className="text-sm text-amber-200">

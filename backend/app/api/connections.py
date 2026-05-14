@@ -194,6 +194,124 @@ async def list_helix_event_types(
     return [HelixEventTypeOut.model_validate(r) for r in rows]
 
 
+class HelixEventTypeUpsert(BaseModel):
+    """Request body for create + update of a Helix event type.
+
+    For create, ``name`` and ``event_schema`` are both required by
+    Verkada. For update, both are optional — pass only what changed.
+    ``event_schema`` is the attribute→type map, e.g.
+    ``{"location": "string", "count": "integer"}``.
+    """
+
+    name: str | None = None
+    event_schema: dict[str, Any] | None = None
+
+
+async def _verkada_client_for(conn: Connection) -> "VerkadaClient":
+    """Open a VerkadaClient using this connection's stored API key."""
+    from app.connectors.verkada.client import VerkadaClient
+
+    secret = decrypt_secret(conn.encrypted_secret)
+    api_key = secret.get("api_key")
+    if not api_key:
+        raise HTTPException(
+            status_code=400,
+            detail="connection has no api_key set — finish setup first",
+        )
+    region = secret.get("region") or None
+    return VerkadaClient(api_key=api_key, base_url=region)
+
+
+@router.post("/{conn_id}/helix-event-types", response_model=HelixEventTypeOut)
+async def create_helix_event_type_endpoint(
+    conn_id: UUID,
+    body: HelixEventTypeUpsert,
+    session: AsyncSession = Depends(get_session),
+) -> HelixEventTypeOut:
+    """Create a new Helix event type in Verkada Command and re-sync the
+    local cache. Both ``name`` and ``event_schema`` are required."""
+    from app.connectors.verkada.client import VerkadaApiError
+
+    if not body.name or body.event_schema is None:
+        raise HTTPException(
+            status_code=400,
+            detail="name and event_schema are both required to create an event type",
+        )
+    conn = await session.get(Connection, conn_id)
+    if conn is None:
+        raise HTTPException(status_code=404, detail="connection not found")
+    client = await _verkada_client_for(conn)
+    try:
+        await client.create_helix_event_type(body.name, body.event_schema)
+    except VerkadaApiError as e:
+        raise HTTPException(status_code=400, detail=str(e)) from e
+    # Re-sync so the row appears locally without a separate "Sync" click.
+    await sync_helix_event_types_for_connection(conn.id)
+    # Find the row we just created. New uid was assigned by Verkada and
+    # only landed in the DB during the resync above, so query by name.
+    new_row = (
+        await session.execute(
+            select(VerkadaHelixEventType)
+            .where(
+                VerkadaHelixEventType.connection_id == conn_id,
+                VerkadaHelixEventType.name == body.name,
+            )
+            .order_by(VerkadaHelixEventType.last_synced_at.desc())
+            .limit(1)
+        )
+    ).scalar_one_or_none()
+    if new_row is None:
+        raise HTTPException(
+            status_code=500,
+            detail="event type created in Verkada but didn't show up in resync",
+        )
+    return HelixEventTypeOut.model_validate(new_row)
+
+
+@router.patch("/{conn_id}/helix-event-types/{event_type_uid}", response_model=HelixEventTypeOut)
+async def update_helix_event_type_endpoint(
+    conn_id: UUID,
+    event_type_uid: str,
+    body: HelixEventTypeUpsert,
+    session: AsyncSession = Depends(get_session),
+) -> HelixEventTypeOut:
+    """Update a Helix event type's name and/or schema, then re-sync the
+    local cache. Both body fields are optional but at least one must be
+    provided."""
+    from app.connectors.verkada.client import VerkadaApiError
+
+    if body.name is None and body.event_schema is None:
+        raise HTTPException(
+            status_code=400,
+            detail="provide at least one of name / event_schema to update",
+        )
+    conn = await session.get(Connection, conn_id)
+    if conn is None:
+        raise HTTPException(status_code=404, detail="connection not found")
+    client = await _verkada_client_for(conn)
+    try:
+        await client.update_helix_event_type(
+            event_type_uid, name=body.name, event_schema=body.event_schema
+        )
+    except VerkadaApiError as e:
+        raise HTTPException(status_code=400, detail=str(e)) from e
+    await sync_helix_event_types_for_connection(conn.id)
+    updated_row = (
+        await session.execute(
+            select(VerkadaHelixEventType).where(
+                VerkadaHelixEventType.connection_id == conn_id,
+                VerkadaHelixEventType.event_type_uid == event_type_uid,
+            )
+        )
+    ).scalar_one_or_none()
+    if updated_row is None:
+        raise HTTPException(
+            status_code=500,
+            detail="event type updated in Verkada but didn't show up in resync",
+        )
+    return HelixEventTypeOut.model_validate(updated_row)
+
+
 @router.post("/{conn_id}/sync-helix")
 async def trigger_helix_sync(
     conn_id: UUID,
