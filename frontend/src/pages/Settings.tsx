@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
-import { apiGet, apiPut, SettingRow, SettingsResponse } from "../lib/api";
+import { apiGet, apiPost, apiPut, SettingRow, SettingsResponse } from "../lib/api";
 
 
 export default function Settings() {
@@ -50,6 +50,7 @@ function SettingEditor({ row }: { row: SettingRow }) {
   const qc = useQueryClient();
   const [value, setValue] = useState<string>(row.value ?? row.default);
   const [savedAt, setSavedAt] = useState<number | null>(null);
+  const [confirmClear, setConfirmClear] = useState(false);
 
   useEffect(() => {
     setValue(row.value ?? row.default);
@@ -62,6 +63,18 @@ function SettingEditor({ row }: { row: SettingRow }) {
       qc.invalidateQueries({ queryKey: ["settings"] });
       setSavedAt(Date.now());
       window.setTimeout(() => setSavedAt(null), 1500);
+    },
+  });
+
+  const clear = useMutation({
+    mutationFn: () =>
+      apiPost<{ deleted_rows: number; removed_files: number }>(
+        `/api/settings/${row.key}/clear`,
+        {},
+      ),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["settings"] });
+      setConfirmClear(false);
     },
   });
 
@@ -85,6 +98,38 @@ function SettingEditor({ row }: { row: SettingRow }) {
             <div className="text-sm text-slate-200 mt-0.5 font-medium">
               {row.usage.summary}
             </div>
+            {row.allow_clear && !confirmClear && (
+              <button
+                onClick={() => setConfirmClear(true)}
+                disabled={(row.usage.count ?? 0) === 0}
+                className="text-[11px] mt-1.5 px-2 py-0.5 rounded border border-rose-900/60 text-rose-300 hover:bg-rose-950/40 hover:border-rose-700 disabled:opacity-30 disabled:hover:bg-transparent"
+                title="Delete everything in this bucket immediately, regardless of retention"
+              >
+                Clear now
+              </button>
+            )}
+            {row.allow_clear && confirmClear && (
+              <div className="mt-1.5 space-y-1">
+                <div className="text-[10px] text-rose-300">
+                  Delete all {row.usage.summary}?
+                </div>
+                <div className="flex gap-1 justify-end">
+                  <button
+                    onClick={() => setConfirmClear(false)}
+                    className="text-[11px] px-2 py-0.5 rounded border border-white/15 text-slate-400 hover:text-slate-200"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    onClick={() => clear.mutate()}
+                    disabled={clear.isPending}
+                    className="text-[11px] px-2 py-0.5 rounded bg-rose-700 hover:bg-rose-600 text-white disabled:opacity-40"
+                  >
+                    {clear.isPending ? "Clearing…" : "Yes, clear"}
+                  </button>
+                </div>
+              </div>
+            )}
           </div>
         )}
       </div>

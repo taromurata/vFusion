@@ -298,3 +298,32 @@ async def cleanup_expired(retention_hours: int | None = None) -> dict[str, int]:
             removed_files,
         )
     return {"deleted_rows": deleted_rows, "removed_files": removed_files}
+
+
+async def clear_all_assets() -> dict[str, int]:
+    """Nuke every WebhookAsset row + its on-disk file. Manual operation
+    triggered from the Settings page's "Clear now" button — different
+    from cleanup_expired, which is age-gated."""
+    deleted_rows = 0
+    removed_files = 0
+    async with SessionLocal() as session:
+        all_assets = (
+            await session.execute(select(WebhookAsset))
+        ).scalars().all()
+        for asset in all_assets:
+            if asset.local_path:
+                try:
+                    Path(asset.local_path).unlink(missing_ok=True)
+                    removed_files += 1
+                except OSError:
+                    pass
+        if all_assets:
+            await session.execute(delete(WebhookAsset))
+            deleted_rows = len(all_assets)
+        await session.commit()
+    logger.info(
+        "assets clear-all: deleted_rows=%d removed_files=%d",
+        deleted_rows,
+        removed_files,
+    )
+    return {"deleted_rows": deleted_rows, "removed_files": removed_files}

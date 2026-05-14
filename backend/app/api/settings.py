@@ -7,6 +7,7 @@ from pydantic import BaseModel
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.assets import clear_all_assets
 from app.connectors.verkada.footage import CLIP_ROOT, IMAGE_ROOT
 from app.db import get_session
 from app.models import Run, WebhookAsset, WebhookEvent
@@ -44,6 +45,11 @@ class SettingRow(BaseModel):
     allow_zero: bool
     value: str | None  # the *effective* value (stored OR default if unset)
     usage: SettingUsage | None = None
+    # True if the UI should expose a "Clear now" button that wipes all
+    # data governed by this setting immediately, bypassing the retention
+    # window. Currently wired for webhook assets only — extending to
+    # other buckets is a matter of adding a clear-handler below.
+    allow_clear: bool = False
 
 
 class SettingsResponse(BaseModel):
@@ -143,6 +149,23 @@ class SettingUpdate(BaseModel):
     value: str | None  # None or "" clears the override and reverts to default
 
 
+# Keys whose data can be wiped immediately via POST /clear, bypassing
+# the retention window. Extending to other buckets is a matter of
+# implementing a clear-handler in ``_clear_for`` below and adding the
+# key here.
+CLEARABLE_KEYS: set[str] = {"webhook_asset_retention_days"}
+
+
+async def _clear_for(key: str) -> dict[str, int]:
+    """Dispatch table for "clear now" actions. Each handler returns a
+    summary dict the API can pass through to the caller."""
+    if key == "webhook_asset_retention_days":
+        return await clear_all_assets()
+    raise HTTPException(
+        status_code=400, detail=f"setting {key!r} doesn't support clear"
+    )
+
+
 @router.get("", response_model=SettingsResponse)
 async def list_settings(
     session: AsyncSession = Depends(get_session),
@@ -161,9 +184,22 @@ async def list_settings(
                 allow_zero=spec["allow_zero"],
                 value=value,
                 usage=usage,
+                allow_clear=spec["key"] in CLEARABLE_KEYS,
             )
         )
     return SettingsResponse(items=items)
+
+
+@router.post("/{key}/clear")
+async def clear_setting_data(key: str) -> dict[str, int]:
+    """Immediately wipe all data governed by ``key``, regardless of
+    retention. Used by the Settings page's "Clear now" button."""
+    if key not in CLEARABLE_KEYS:
+        raise HTTPException(
+            status_code=404,
+            detail=f"setting {key!r} either doesn't exist or doesn't support clear",
+        )
+    return await _clear_for(key)
 
 
 @router.put("/{key}", response_model=SettingRow)

@@ -56,6 +56,7 @@ export interface SettingRow {
   allow_zero: boolean; // when true, 0 = unlimited
   value: string | null;
   usage: SettingUsage | null;
+  allow_clear: boolean; // when true, UI exposes a "Clear now" button
 }
 
 export interface SettingsResponse {
