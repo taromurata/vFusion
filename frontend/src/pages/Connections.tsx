@@ -13,7 +13,8 @@ import { useBrand } from "../lib/brand";
 
 type FormMode =
   | { kind: "create"; type: string }
-  | { kind: "finish"; connection: Connection };
+  | { kind: "finish"; connection: Connection }
+  | { kind: "edit"; connection: Connection };
 
 export default function Connections() {
   const qc = useQueryClient();
@@ -100,6 +101,7 @@ export default function Connections() {
                     key={c.id}
                     c={c}
                     onFinish={() => setForm({ kind: "finish", connection: c })}
+                    onEdit={() => setForm({ kind: "edit", connection: c })}
                     onDelete={() => {
                       if (confirm(`Delete "${c.name}"? This can't be undone.`)) {
                         del.mutate(c.id);
@@ -209,10 +211,12 @@ export default function Connections() {
 function VerkadaRow({
   c,
   onFinish,
+  onEdit,
   onDelete,
 }: {
   c: Connection;
   onFinish: () => void;
+  onEdit: () => void;
   onDelete: () => void;
 }) {
   const qc = useQueryClient();
@@ -280,6 +284,13 @@ function VerkadaRow({
             Finish setup
           </button>
         )}
+        <button
+          onClick={onEdit}
+          className="text-xs px-2 py-1 rounded border border-white/15 text-slate-300 hover:text-white hover:border-white/30"
+          title="Edit name, API key, or signing secret"
+        >
+          Edit
+        </button>
         <button
           onClick={onDelete}
           className="text-xs px-2 py-1 rounded border border-white/15 text-slate-300 hover:text-rose-300 hover:border-rose-700"
@@ -371,8 +382,15 @@ function ConnectionFormModal({
   onSaved: () => void;
 }) {
   const brand = useBrand();
+  // "finish" = auto-detected stub from an inbound webhook, user fills
+  //   in API key / signing secret.
+  // "edit"   = existing complete connection, user updates fields.
+  // Both PUT to the same endpoint and treat blank secret fields as
+  // "keep existing" so users can re-open without re-entering keys.
+  const isExisting = mode.kind === "finish" || mode.kind === "edit";
   const isFinish = mode.kind === "finish";
-  const conn = isFinish ? mode.connection : null;
+  const isEdit = mode.kind === "edit";
+  const conn = isExisting ? mode.connection : null;
 
   const [name, setName] = useState(conn?.name ?? "");
   const [values, setValues] = useState<Record<string, string>>(
@@ -384,7 +402,7 @@ function ConnectionFormModal({
 
   const save = useMutation({
     mutationFn: () => {
-      if (isFinish && conn) {
+      if (isExisting && conn) {
         const secret: Record<string, string> = {};
         for (const [k, v] of Object.entries(values)) {
           if (v) secret[k] = v;
@@ -404,13 +422,23 @@ function ConnectionFormModal({
     onError: (e: Error) => setErr(e.message),
   });
 
-  const title = isFinish ? `Finish setting up ${spec.label}` : `Add ${spec.label}`;
+  const title = isFinish
+    ? `Finish setting up ${spec.label}`
+    : isEdit
+      ? `Edit ${spec.label}`
+      : `Add ${spec.label}`;
   const description = isFinish
     ? `${brand} detected a new Verkada org from an incoming webhook. Add your API key to enable flow actions. Everything else is optional.`
-    : spec.description;
+    : isEdit
+      ? "Update any field below. Secret fields left blank keep their existing value — only fill them if you're rotating the API key or signing secret."
+      : spec.description;
 
+  // In finish mode the external_id is locked (auto-filled from the
+  // webhook). In edit mode it's also locked — you can't repoint an
+  // existing connection at a different org without recreating. In
+  // create mode the user types it.
   const visibleFields = spec.fields.filter(
-    (f) => !isFinish || f.name !== spec.external_id_field,
+    (f) => !isExisting || f.name !== spec.external_id_field,
   );
 
   return (
@@ -421,8 +449,8 @@ function ConnectionFormModal({
           <p className="text-sm text-slate-300 mt-1">{description}</p>
         </div>
 
-        {isFinish && conn?.external_id && (
-          <Field label="Verkada Org ID" help="Detected from your incoming webhook.">
+        {isExisting && conn?.external_id && (
+          <Field label="Verkada Org ID" help={isFinish ? "Detected from your incoming webhook." : "Org ID can't be changed once a connection exists — delete and recreate to repoint."}>
             <input
               value={conn.external_id}
               readOnly
@@ -452,7 +480,7 @@ function ConnectionFormModal({
               onChange={(next) =>
                 setValues((v) => ({ ...v, [f.name]: next }))
               }
-              isFinish={isFinish}
+              isFinish={isExisting}
             />
           </Field>
         ))}
@@ -477,18 +505,17 @@ function ConnectionFormModal({
                 setErr("Friendly name is required.");
                 return;
               }
-              if (isFinish && spec.required_for_setup) {
-                if (!values[spec.required_for_setup]) {
-                  setErr(`${spec.required_for_setup} is required to finish setup.`);
-                  return;
-                }
-              }
+              // Don't enforce required_for_setup at the form level —
+              // the backend leaves setup_complete=false when the key
+              // is missing, which keeps the pending-setup banner up
+              // as a reminder. Users can save partial state (e.g. the
+              // signing secret first, API key later).
               save.mutate();
             }}
             disabled={save.isPending}
             className="px-3 py-1.5 rounded-md bg-sky-700 hover:bg-sky-600 text-sm disabled:opacity-50"
           >
-            {save.isPending ? "Saving…" : isFinish ? "Finish setup" : "Save"}
+            {save.isPending ? "Saving…" : isEdit ? "Save changes" : isFinish ? "Save" : "Save"}
           </button>
         </div>
       </div>
