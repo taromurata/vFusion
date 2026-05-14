@@ -201,17 +201,29 @@ function WaitingFooter({
   mode: "quick" | "named" | "lan";
 }) {
   return (
-    <div className="border-t border-white/10 pt-4 space-y-2">
+    <div className="border-t border-white/10 pt-4 space-y-3">
+      {anyWebhookReceived && (
+        <div className="flex items-start gap-2 text-sm bg-emerald-950/30 border border-emerald-900/50 rounded px-3 py-2">
+          <span className="text-emerald-300 text-lg leading-none mt-0.5">✓</span>
+          <div>
+            <div className="text-emerald-200 font-semibold">
+              Stack is healthy — at least one webhook has reached the server.
+            </div>
+            <div className="text-emerald-300/80 text-[11px] mt-0.5">
+              Smoke-test traffic counts here (it tells you ingest is working). It's
+              not the same as a real Verkada webhook — that's what unlocks the dashboard.
+            </div>
+          </div>
+        </div>
+      )}
       <div className="flex items-center gap-2 text-sm">
         <span className="inline-block w-2 h-2 rounded-full bg-sky-400 animate-pulse" />
-        <span className="text-slate-200">Waiting for first Verkada webhook…</span>
+        <span className="text-slate-200">Waiting for first real Verkada webhook…</span>
       </div>
       <div className="text-[11px] text-slate-500">
-        {anyWebhookReceived
-          ? "✓ Stack received its first request — keep going to send a real Verkada webhook to unlock."
-          : mode === "lan"
-            ? "Nothing's arrived yet."
-            : "Nothing's arrived yet. Once you finish the Verkada Command setup above and send a test webhook, the dashboard will unlock automatically."}
+        {mode === "lan"
+          ? "A real Verkada webhook means one with a valid UUID org_id from Verkada's cloud — which can't reach LAN-only mode. Restart with a tunnel profile (above)."
+          : "A real Verkada webhook means one from Verkada Command with a valid UUID org_id. Once it lands here, the dashboard unlocks automatically."}
       </div>
     </div>
   );
