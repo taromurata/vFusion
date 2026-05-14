@@ -16,22 +16,23 @@ Self-hosted, Verkada-flavored workflow automation — a visual router for webhoo
 - ⏰ **Triggers** — Verkada webhooks + scheduled jobs (interval / daily / weekly)
 - 🧪 **Workbench** — one-shot Gemini test page. Pick a camera, write a prompt, optionally chain a Helix post — without building a full flow first. "Run it back" to rehydrate any past test
 - 📊 **Stats & cost** — ingest counters (24h / 7d / 30d), top event types with inbox drill-down, Gemini spend tracking per model, real-time server load (CPU / memory / disk)
-- 🌍 **Public URLs built-in** — three deploy modes: LAN-only, quick tunnel (free TryCloudflare, zero setup), named tunnel (your own domain). URL auto-displayed in the UI banner
+- 🌍 **Public URLs built-in** — two deploy modes: quick mode (free TryCloudflare URL, zero Cloudflare setup) and production (named tunnel on your own domain). URL auto-displayed in the UI banner
 - 🔐 **Secrets at rest** — Fernet encryption for stored API keys + signing secrets, HMAC webhook signature verification, sensitive headers redacted before persistence
 
-## Three ways to run
+## Two ways to run
 
 | Mode | Webhook URL | Best for |
 |---|---|---|
-| **LAN-only** | `http://localhost:18080/hooks/...` | Evaluating the UI, testing flows with synthetic curl traffic, Tailscale-only homelabs |
-| **Quick tunnel** | `https://<random>.trycloudflare.com/hooks/verkada` — changes on every restart | "Just let me try the full Verkada→webhook flow without setting up a domain" |
-| **Named tunnel** | `https://hooks.yourdomain.com/hooks/verkada` — stable | Production. You own a domain on Cloudflare. |
+| **Quick** | `https://<random>.trycloudflare.com/hooks/verkada` — changes on every restart | Testing, demos, kicking the tires. No Cloudflare account or domain needed. |
+| **Production** | `https://hooks.yourdomain.com/hooks/verkada` — stable | Always-on deploys. Requires a free Cloudflare account + a domain on Cloudflare. |
 
-The setup below covers LAN-only. Add `--profile quick` for an ephemeral public URL, or follow **Production deploy with Cloudflare Tunnel** further down for a stable one.
+Both share the same bootstrap below. After that, pick one path.
 
-## Try it locally (Mac / Linux / Windows)
+---
 
-Requires only Docker. This is the LAN-only path — webhooks from Verkada's cloud won't reach a laptop, so use this for evaluating the UI and testing flows with synthetic webhooks.
+## Bootstrap (one-time, ~5 min)
+
+Same for both modes. If you're skipping ahead to Production, do these steps first.
 
 ### 1. Install Docker Desktop
 
@@ -45,7 +46,7 @@ docker compose version
 
 ### 2. Clone, configure, generate key — one paste
 
-This block clones into `~/vfusion`, copies `.env.example` → `.env`, generates a Fernet key (used to encrypt API keys at rest in Postgres), prints it, and writes it into `.env` for you:
+This block clones into `~/vfusion`, copies `.env.example` → `.env`, generates a Fernet key (used to encrypt API keys at rest in Postgres), and writes it into `.env` for you:
 
 ```bash
 cd ~
@@ -59,30 +60,25 @@ sed -i.bak "s|^FERNET_KEY=.*|FERNET_KEY=$FERNET_KEY|" .env && rm .env.bak
 echo "Wrote FERNET_KEY to .env"
 ```
 
-No copy-paste required. Confirm with `grep ^FERNET_KEY .env`.
+Confirm with `grep ^FERNET_KEY .env`.
 
-### 3. Start the stack
+---
+
+## Quick mode — testing & demos
+
+For trying the full Verkada → webhook → flow loop without configuring a domain. Cloudflare hands you a random `https://<random-words>.trycloudflare.com` URL.
+
+### 1. Start the stack
 
 ```bash
-docker compose up --build -d
+docker compose --profile quick up --build -d
 ```
 
-First build takes ~2–3 minutes (image pulls + npm install + alembic migrations). Subsequent starts are seconds.
+First build takes ~2–3 min (image pulls + npm install + alembic migrations). Subsequent starts are seconds. Then open **http://localhost:15173** — the inbox banner shows your trycloudflare URL within ~10 seconds.
 
-Watch the backend come up:
-```bash
-docker compose logs -f backend     # wait for "Uvicorn running on http://0.0.0.0:8000"
-```
+### 2. (Optional) Smoke test
 
-### 4. Open the UI
-
-- **Dashboard**: http://localhost:15173
-- **Backend health**: http://localhost:18080/api/health
-- **Webhook catch-all**: `POST http://localhost:18080/hooks/<anything>`
-
-### 5. Smoke-test ingest (optional)
-
-Fire a realistic Verkada-shaped LPR webhook at your endpoint. This confirms the stack is alive and exercises the classifier end-to-end. The fake `org_id` (`topSecretOrgDoNotTellAnyone`) isn't a valid UUID, so it's rejected by the org-detection logic — the webhook lands in the inbox but no fake Connection is auto-created. The welcome screen's "Stack received its first request ✓" indicator turns on within ~2 seconds:
+Fire a realistic LPR webhook at the LAN address. Confirms the stack is alive and exercises the classifier. The fake `org_id` isn't a valid UUID so it's rejected by the org-detection logic — the webhook lands in the inbox but no fake Connection is auto-created. The welcome screen's "Stack received its first request ✓" indicator turns on within 2 seconds:
 
 ```bash
 curl -X POST http://localhost:18080/hooks/verkada \
@@ -97,58 +93,43 @@ curl -X POST http://localhost:18080/hooks/verkada \
       "created": 1778722095,
       "detected": 1778722097743,
       "license_plate_number": "BVZ0938",
-      "confidence": 0.9379871428571429,
-      "crop": [0.2533212900161743, 0.3052724301815033, 0.10247643291950226, 0.1325235664844513],
-      "image_url": "https://i.ibb.co/93CbvzhZ/5-13-2026-6-35-11-PM-3rd-Ave-Lobby-West-CD63-E-Demo-Verkada-Snapshot.jpg",
-      "license_plate_state": "us-wa",
-      "license_plate_state_confidence": 0.7,
-      "vehicle_image_url": "https://i.ibb.co/Y7Gv55G7/Screenshot-2026-05-13-at-6-33-20-PM.png"
+      "confidence": 0.93,
+      "crop": [0.25, 0.30, 0.10, 0.13],
+      "license_plate_state": "us-wa"
     }
   }'
 ```
 
-This won't dismiss the welcome screen — only a real Verkada webhook (with a valid UUID org_id) does that. To actually unlock the dashboard, send a webhook from your real Verkada org — see the next section.
+This won't dismiss the welcome screen — only a real Verkada webhook (with a valid UUID org_id) does that.
 
-### 6. Wire it into Verkada Command
+### 3. Wire it into Verkada Command
 
-The welcome modal in the dashboard shows your public webhook URL with a copy button. You'll plug that into Verkada Command, but **before you do**, you'll need a shared secret on both sides — Command and vFusion compute HMAC-SHA256 against the same secret string so vFusion can verify each webhook actually came from your Verkada org (not a spoof). The secret is **strongly recommended for production** — without it, anyone who finds your webhook URL could forge events.
+The welcome modal in the dashboard shows your public webhook URL with a copy button. Before pasting it into Verkada Command, generate a shared secret — both sides compute HMAC-SHA256 against the same string so vFusion can verify each webhook came from your Verkada org. **Strongly recommended even in quick mode** — without it anyone who finds your trycloudflare URL could forge events.
 
-The flow is:
-
-1. **In vFusion → Connections** → open your Verkada org's setup form → click **Generate** next to "Webhook signing secret". You'll get a 64-char random string. Click **Copy**.
-2. **In Verkada Command** → **Settings** → **Webhooks** → **Create webhook**:
-   - **Endpoint URL**: paste your public URL (the welcome modal shows it with `/hooks/verkada` appended)
-   - **Shared secret**: paste the string you just generated in vFusion
-   - Pick the notification types you want, or "all events"
+1. **vFusion → Connections** → open your Verkada org form → click **Generate** next to "Webhook signing secret" → click **Copy**.
+2. **Verkada Command** → **Settings** → **Webhooks** → **Create webhook**:
+   - **Endpoint URL**: paste your trycloudflare URL with `/hooks/verkada` appended
+   - **Shared secret**: paste the string you just generated
+   - Pick the notification types you want
    - **Save**
-3. Back **in vFusion** → save the Connection form (with the same secret you pasted into Command).
+3. Back **in vFusion** → save the Connection form.
 4. **In Verkada Command** → click **Send test webhook**.
 
-The dashboard auto-unlocks the moment the real webhook arrives. In the inbox, the event should show a green **✓ verified** badge — that's the HMAC matching. If it shows **bad sig** instead, the secret string differs between the two sides; re-copy/paste both and try again.
+The dashboard auto-unlocks the moment the real webhook arrives. In the inbox, the event should show a green **✓ verified** badge.
 
-## Quick tunnel (real public URL, no domain needed)
+### What's exposed through the tunnel
 
-If you want to point real Verkada webhooks at your laptop without setting up a domain, use the `quick` profile. This runs `cloudflared` in **TryCloudflare** mode — Cloudflare hands you a random `https://<random-words>.trycloudflare.com` URL that's real public HTTPS. The Webhook Inbox banner shows the URL with a copy button so you know what to paste into Verkada Command.
+Only the exact path `POST /hooks/verkada`. A Caddy reverse proxy sits between the trycloudflare URL and the backend and returns 404 for anything else (admin API, dashboard, synthetic slugs, wrong HTTP methods). So even if the URL leaks — Slack screenshot, Verkada Command webhook config, etc. — attackers can only POST webhook payloads, same surface as Verkada's cloud has.
 
-```bash
-docker compose --profile quick up --build -d
-```
+### Catch
 
-That's it. No account, no API key, no domain. Wait ~10 seconds for cloudflared to register, then open the dashboard — the amber banner at the top of the Webhook Inbox will show the URL.
+The trycloudflare URL **changes every time `cloudflared` restarts**. You'd have to re-paste the new URL into Verkada Command after each restart. For something stable, see Production mode below.
 
-**Catch:** the URL changes every time `cloudflared` restarts. Don't use this for production — when the URL rolls, you'd have to re-paste the new one into Verkada Command. For something stable, see the named tunnel below.
+---
 
-**What's exposed through the tunnel:** only the exact path `/hooks/verkada`. A Caddy reverse proxy sits between the trycloudflare URL and the backend and returns 404 for anything else (admin API, dashboard, synthetic `/hooks/<random-slug>` paths). So even if the URL leaks, attackers can only POST webhook payloads — same surface as the Verkada cloud has. On the LAN side (`http://localhost:18080`) the full catch-all `/hooks/<anything>` still works for synthetic test traffic.
+## Production mode — 24/7 with your own domain
 
-## Production deploy with Cloudflare Tunnel
-
-For vFusion to receive real webhooks from Verkada's cloud, it needs a public URL. **Cloudflare Tunnel** gives you a free, stable HTTPS endpoint (`https://hooks.yourdomain.com`) without opening any ports on your router. We bundle the `cloudflared` connector as an opt-in compose profile, so the whole stack — vFusion plus its public ingress — comes up with one command.
-
-### What you need
-
-- Everything from "Try it locally" above (Docker, this repo cloned, `.env` filled in)
-- A free [Cloudflare account](https://cloudflare.com)
-- A domain on Cloudflare (free tier is fine — you can transfer an existing domain or buy a cheap one)
+For always-on deploys with a stable URL. Requires a free Cloudflare account + a domain on Cloudflare.
 
 ### 1. Create the Cloudflare tunnel (~5 min in the dashboard)
 
@@ -156,13 +137,13 @@ For vFusion to receive real webhooks from Verkada's cloud, it needs a public URL
 2. Navigate to **Networks** → **Tunnels** → **Create a tunnel**.
 3. Choose **Cloudflared** as the connector type → **Next**.
 4. Name the tunnel `vfusion` → **Save tunnel**.
-5. The next screen shows install commands for various OSes. **Copy the token** — it's the long string in those commands, starting with `eyJhIjoi...`. You don't need to run any of the install commands; our `docker-compose.yml` runs `cloudflared` for you. Click **Next**.
+5. The next screen shows install commands. **Copy the token** — the long string starting with `eyJhIjoi...`. Ignore the install commands; our `docker-compose.yml` runs `cloudflared` for you. Click **Next**.
 6. On the **Public Hostnames** tab, click **Add a public hostname**:
    - **Subdomain**: `hooks`
    - **Domain**: pick the domain you added to Cloudflare
    - **Path**: `hooks/*` ← important: limits public exposure to webhook endpoints only
    - **Service** → **Type**: `HTTP` → **URL**: `backend:8000`
-7. **Save hostname**. Your public webhook URL is now `https://hooks.yourdomain.com/hooks/verkada`.
+7. **Save hostname**. Your public URL is now `https://hooks.yourdomain.com/hooks/verkada`.
 
 ### 2. Add the token to `.env`
 
@@ -171,15 +152,13 @@ cd ~/vfusion
 echo "CF_TUNNEL_TOKEN=<paste-token-here>" >> .env
 ```
 
-(Or open `.env` in an editor and fill in the `CF_TUNNEL_TOKEN=` line.)
-
-### 3. Start the stack with the cloudflared profile
+### 3. Start the stack
 
 ```bash
 docker compose --profile cloudflared up --build -d
 ```
 
-The `--profile cloudflared` flag tells compose to include the tunnel connector. Verify it connected:
+Verify the tunnel connected:
 
 ```bash
 docker compose logs cloudflared | grep -i "registered tunnel connection"
@@ -189,31 +168,31 @@ You should see 2–4 lines (Cloudflare connects to multiple POPs for redundancy)
 
 ### 4. Configure the webhook in Verkada Command
 
-You'll do this in two stops — generate a shared secret in vFusion first, then plug both the URL and the secret into Verkada Command. The shared secret is the HMAC key both systems use to prove each webhook is genuine — **production deploys should always set it**, because without it anyone who finds your stable URL could forge events.
-
-1. **In vFusion → Connections** → open the Verkada org form → click **Generate** next to "Webhook signing secret" → click **Copy**. (Don't save yet — keep the form open.)
-2. **In Verkada Command** → **All Products** → **Settings** → **Webhooks** → **Create webhook**:
+1. **vFusion → Connections** → open the Verkada org form → click **Generate** next to "Webhook signing secret" → click **Copy**. (Don't save yet — keep the form open.)
+2. **Verkada Command** → **All Products** → **Settings** → **Webhooks** → **Create webhook**:
    - **Endpoint URL**: `https://hooks.yourdomain.com/hooks/verkada`
    - **Shared secret**: paste the string from step 1
-   - **Events**: pick the notification types you want, or "all events" to start
+   - **Events**: pick the notification types you want, or "all events"
    - **Save**
 3. Click **Send test webhook**.
 
 ### 5. Finish setup in vFusion
 
-The test webhook lands in the **Webhook Inbox** within a couple seconds. vFusion auto-detects the org and shows a banner: **"New Verkada org detected — finish setup"**. The form you left open in step 1 above is the same one — fill in the rest:
+The test webhook lands in the inbox within a couple seconds. vFusion auto-detects the org. Back in the Connection form you left open in step 1:
 
 - Your **Verkada API key** (generate in Command → My Account → API Keys)
 - The **webhook signing secret** field already has the value from step 1 — leave it as-is
 
-Save. The test webhook in the inbox should now show a green **✓ verified** badge confirming HMAC works end-to-end. Flows can now read camera footage, post Helix events, unlock doors, etc.
+Save. The test webhook in the inbox should now show a green **✓ verified** badge.
 
-### Updating
+---
+
+## Updating
 
 ```bash
 cd ~/vfusion
 git pull
-docker compose --profile cloudflared up --build -d
+docker compose --profile <quick|cloudflared> up --build -d
 ```
 
 Migrations run automatically on backend boot.
