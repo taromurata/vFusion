@@ -1,4 +1,5 @@
 import json
+import uuid
 from typing import Any
 
 from fastapi import APIRouter, BackgroundTasks, Depends, Request
@@ -19,6 +20,21 @@ router = APIRouter(tags=["hooks"])
 
 
 SENSITIVE_HEADERS = {"authorization", "cookie", "x-api-key", "x-verkada-auth"}
+
+# Sentinel org_ids that look like UUIDs but should never trigger a real
+# auto-created Connection — synthetic test traffic, all-zero IDs, etc.
+_NULL_UUID = uuid.UUID("00000000-0000-0000-0000-000000000000")
+
+
+def _is_real_org_id(org_id: str | None) -> bool:
+    """True iff ``org_id`` is a proper UUID and not the null sentinel."""
+    if not org_id:
+        return False
+    try:
+        parsed = uuid.UUID(org_id)
+    except (ValueError, TypeError):
+        return False
+    return parsed != _NULL_UUID
 
 
 def _safe_headers(request: Request) -> dict[str, str]:
@@ -63,6 +79,13 @@ async def _get_or_autocreate_connection(
     setup by supplying an api_key through the UI.
     """
     if not org_id:
+        return None
+    # Refuse to spawn a stub Connection for synthetic / malformed org_ids
+    # (random test strings, all-zero UUIDs). Without this, README curl
+    # examples and stray junk would pollute the Connections page on first
+    # install. The onboarding flow depends on "first real Connection" as
+    # the signal that a real Verkada webhook has arrived.
+    if not _is_real_org_id(org_id):
         return None
     result = await session.execute(
         select(Connection).where(

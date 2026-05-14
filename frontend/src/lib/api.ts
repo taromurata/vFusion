@@ -26,6 +26,16 @@ export const apiPost = <T>(p: string, body: unknown) => request<T>("POST", p, bo
 export const apiPut = <T>(p: string, body: unknown) => request<T>("PUT", p, body);
 export const apiDelete = (p: string) => request<void>("DELETE", p);
 
+// ---- Public config (tunnel + onboarding state) ----
+
+export interface PublicConfig {
+  tunnel_mode: "quick" | "named" | "lan";
+  public_webhook_base: string | null;
+  ephemeral: boolean;
+  needs_onboarding: boolean;
+  any_webhook_received: boolean;
+}
+
 // ---- Webhook events ----
 
 export type Family = "camera" | "access" | "lpr" | "sensor" | "intercom" | "unknown";

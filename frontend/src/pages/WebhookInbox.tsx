@@ -7,6 +7,7 @@ import {
   apiGet,
   API_BASE,
   Family,
+  PublicConfig,
   WebhookAsset,
   WebhookEvent,
   WebhookEventListResponse,
@@ -299,13 +300,6 @@ export default function WebhookInbox() {
     </div>
   );
 }
-
-interface PublicConfig {
-  tunnel_mode: "quick" | "named" | "lan";
-  public_webhook_base: string | null;
-  ephemeral: boolean;
-}
-
 
 function WebhookEndpointBanner() {
   // Quick mode's hostname can take a few seconds to settle after

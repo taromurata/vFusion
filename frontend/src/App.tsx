@@ -1,5 +1,6 @@
 import { NavLink, Route, Routes, Navigate } from "react-router-dom";
 
+import OnboardingGate from "./components/OnboardingGate";
 import WebhookInbox from "./pages/WebhookInbox";
 import UnrecognizedEvents from "./pages/UnrecognizedEvents";
 import Flows from "./pages/Flows";
@@ -19,6 +20,14 @@ const navActive = "bg-white/15 text-white";
 const navInactive = "text-slate-300";
 
 export default function App() {
+  return (
+    <OnboardingGate>
+      <AppShell />
+    </OnboardingGate>
+  );
+}
+
+function AppShell() {
   return (
     <div className="h-full flex flex-col">
       <header className="border-b border-white/10 bg-black/40 backdrop-blur-md">

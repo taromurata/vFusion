@@ -80,17 +80,12 @@ docker compose logs -f backend     # wait for "Uvicorn running on http://0.0.0.0
 - **Backend health**: http://localhost:18080/api/health
 - **Webhook catch-all**: `POST http://localhost:18080/hooks/<anything>`
 
-### 5. Send a test webhook
+### 5. Smoke-test ingest (optional)
 
-Fire a realistic LPR event at your endpoint. Pick one of these for `BASE`:
-
-- `http://localhost:18080` if you're testing the LAN-only path
-- your trycloudflare URL (e.g. `https://flying-purple-cat-1234.trycloudflare.com`) if you're testing the quick tunnel
+Fire a realistic Verkada-shaped LPR webhook at your endpoint. This confirms the stack is alive and exercises the classifier end-to-end. The fake `org_id` (`topSecretOrgDoNotTellAnyone`) isn't a valid UUID, so it's rejected by the org-detection logic — the webhook lands in the inbox but no fake Connection is auto-created. The welcome screen's "Stack received its first request ✓" indicator turns on within ~2 seconds:
 
 ```bash
-BASE=http://localhost:18080
-
-curl -X POST "$BASE/hooks/verkada" \
+curl -X POST http://localhost:18080/hooks/verkada \
   -H "Content-Type: application/json" \
   -d '{
     "org_id": "topSecretOrgDoNotTellAnyone",
@@ -112,7 +107,19 @@ curl -X POST "$BASE/hooks/verkada" \
   }'
 ```
 
-It should appear in the **Webhook Inbox** within ~2s, classified as an **lpr** family event with the license plate `BVZ0938`.
+This won't dismiss the welcome screen — only a real Verkada webhook (with a valid UUID org_id) does that. To actually unlock the dashboard, send a webhook from your real Verkada org — see the next section.
+
+### 6. Wire it into Verkada Command
+
+The welcome modal in the dashboard shows your public webhook URL with a copy button. Paste it into:
+
+**Verkada Command** → **Settings** → **Webhooks** → **Create webhook**
+- **Endpoint URL**: paste your URL (the modal shows the full one with `/hooks/verkada` appended)
+- Pick the notification types you want, or "all events"
+- **Save**, then copy the signing secret Verkada shows (one-time view)
+- Click **Send test webhook**
+
+The dashboard auto-unlocks the moment the real webhook arrives. From there, vSplice's banner walks you through pasting the API key + signing secret to finish setup.
 
 ## Quick tunnel (real public URL, no domain needed)
 
