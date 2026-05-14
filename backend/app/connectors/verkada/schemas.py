@@ -63,6 +63,8 @@ ACCESS_EVENT_TYPES: frozenset[str] = frozenset(
         "door_ble_unlock_attempt_accepted",
         "door_ble_unlock_attempt_rejected",
         "door_keycard_entered_accepted",
+        "door_keycard_entered_rejected",
+        "door_forced_open",
         "door_lp_presented_accepted",
         "door_lp_presented_rejected",
         "door_deactivated_credential_used",
