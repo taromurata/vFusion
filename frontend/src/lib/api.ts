@@ -65,7 +65,7 @@ export interface SettingsResponse {
 
 // ---- Webhook events ----
 
-export type Family = "camera" | "access" | "lpr" | "sensor" | "intercom" | "credential" | "unknown";
+export type Family = "camera" | "access" | "lpr" | "sensor" | "intercom" | "credential" | "alarm" | "unknown";
 export type SignatureStatus =
   | "verified"
   | "bad_signature"

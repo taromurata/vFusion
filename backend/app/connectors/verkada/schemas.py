@@ -12,7 +12,7 @@ Every Verkada webhook shares a common envelope:
     }
 
 The shape of ``data`` varies by ``webhook_type``, and for ``notification`` it
-further splits by ``data.notification_type``. We group these into six families:
+further splits by ``data.notification_type``. We group these into seven families:
 
     1. camera     — camera AI events (motion, POI, LPR-of-interest, tamper, etc.)
     2. access     — door / ACU events (door_opened, BLE unlock, NFC scan, etc.)
@@ -22,6 +22,9 @@ further splits by ``data.notification_type``. We group these into six families:
     6. credential — credential lifecycle events (created/updated/deleted),
                      uses webhook_type=credential-notification with a different
                      camelCase data shape (events[], eventType, grantorId, …)
+    7. alarm      — Alarms: site state changes (arm/disarm) and incident events
+                     (panic, trigger, resolved). Two outer webhook_types fall
+                     here: alarm_site_state_changed + new_alarms.
 
 Derived from 10K real captures (2026-05). See fixtures/ for one canonical
 sample per family/variant.
@@ -65,6 +68,7 @@ ACCESS_EVENT_TYPES: frozenset[str] = frozenset(
         "door_keycard_entered_accepted",
         "door_keycard_entered_rejected",
         "door_forced_open",
+        "door_face_presented_accepted",
         "door_lp_presented_accepted",
         "door_lp_presented_rejected",
         "door_deactivated_credential_used",
@@ -79,6 +83,19 @@ INTERCOM_EVENT_TYPES: frozenset[str] = frozenset(
         "intercom_missed_call",
         "intercom_call_triggered",
         "intercom_receiver_admitted",
+        "intercom_status",
+    }
+)
+
+
+# Alarm-family webhook types (outer ``webhook_type`` discriminator,
+# similar to lpr / sensor_alert — no nested notification_type). Covers
+# both site state changes (arm/disarm) and actual incident events from
+# Verkada Alarms.
+ALARM_WEBHOOK_TYPES: frozenset[str] = frozenset(
+    {
+        "alarm_site_state_changed",
+        "new_alarms",
     }
 )
 
@@ -185,6 +202,40 @@ class IntercomEventData(BaseModel):
     answered_by_name: str | None = None
 
 
+class AlarmSiteStateChangedData(BaseModel):
+    """webhook_type=alarm_site_state_changed — site arm/disarm/state events."""
+
+    site_id: str
+    site_name: str | None = None
+    timestamp: int
+    event_type: str  # "armed" | "disarmed" | etc.
+    site_state: str
+    site_security_level: str | None = None
+
+
+class NewAlarmEventData(BaseModel):
+    """webhook_type=new_alarms — actual alarm incidents (panic button,
+    trigger fired, alarm resolved, etc.)."""
+
+    alarm_id: str
+    site_id: str
+    site_name: str | None = None
+    event_time: int
+    event_type: str  # "alarm_resolved" | "alarm_triggered" | etc.
+    response_id: str | None = None
+    partition_id: str | None = None
+    partition_name: str | None = None
+    response_level: str | None = None
+    trigger_type: str | None = None
+    trigger_time: int | None = None
+    trigger_device_id: str | None = None
+    trigger_device_name: str | None = None
+    trigger_device_type: str | None = None
+    context_camera_ids: list[str] = Field(default_factory=list)
+    incident_link: str | None = None
+    is_silent: bool | None = None
+
+
 class CredentialEventData(BaseModel):
     """Credential lifecycle webhook (webhook_type=credential-notification).
 
@@ -204,18 +255,20 @@ class CredentialEventData(BaseModel):
 
 
 Family = Literal[
-    "camera", "access", "lpr", "sensor", "intercom", "credential", "unknown"
+    "camera", "access", "lpr", "sensor", "intercom", "credential", "alarm", "unknown"
 ]
 
 
 def classify(envelope: Envelope) -> Family:
-    """Bucket an envelope into one of the six known families (or ``unknown``)."""
+    """Bucket an envelope into one of the seven known families (or ``unknown``)."""
     if envelope.webhook_type == "lpr":
         return "lpr"
     if envelope.webhook_type == "sensor_alert":
         return "sensor"
     if envelope.webhook_type == "credential-notification":
         return "credential"
+    if envelope.webhook_type in ALARM_WEBHOOK_TYPES:
+        return "alarm"
     if envelope.webhook_type == "notification":
         nt = envelope.data.get("notification_type") if isinstance(envelope.data, dict) else None
         if nt in CAMERA_EVENT_TYPES:
@@ -270,5 +323,21 @@ TAXONOMY: dict[str, dict[str, Any]] = {
         "webhook_type": "credential-notification",
         "notification_types": None,
         "filter_fields": ["eventType", "grantorId"],
+    },
+    "alarm": {
+        "label": "Alarms",
+        # Two webhook_types fall into this bucket — site state changes
+        # (arm/disarm) and incident events (panic, trigger, resolved).
+        # Frontend filter uses the webhook_type field on the inbox row
+        # to drill into one or the other.
+        "webhook_type": sorted(ALARM_WEBHOOK_TYPES),
+        "notification_types": None,
+        "filter_fields": [
+            "site_id",
+            "site_name",
+            "event_type",
+            "trigger_type",
+            "trigger_device_name",
+        ],
     },
 }

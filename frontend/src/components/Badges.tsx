@@ -7,6 +7,7 @@ const FAMILY_STYLE: Record<Family, string> = {
   sensor: "bg-amber-900 text-amber-200",
   intercom: "bg-pink-900 text-pink-200",
   credential: "bg-indigo-900 text-indigo-200",
+  alarm: "bg-red-900 text-red-200",
   unknown: "bg-rose-900 text-rose-200",
 };
 

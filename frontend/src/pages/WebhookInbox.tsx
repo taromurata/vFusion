@@ -33,6 +33,7 @@ const FAMILIES: Family[] = [
   "sensor",
   "intercom",
   "credential",
+  "alarm",
   "unknown",
 ];
 
