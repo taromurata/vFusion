@@ -126,7 +126,12 @@ services:
     # Run install on each startup so new deps in package.json land
     # without manually rebuilding the anonymous node_modules volume.
     # No-op when nothing's changed (npm is fast on a warm cache).
-    command: sh -c "npm install --no-audit --no-fund && npm run dev -- --host 0.0.0.0"
+    #
+    # --include=optional forces npm to honor platform-specific optional
+    # deps (rollup's native binaries) even when a package-lock.json
+    # generated on a different arch pruned them out. Works around the
+    # long-standing npm bug at https://github.com/npm/cli/issues/4828.
+    command: sh -c "npm install --no-audit --no-fund --include=optional && npm run dev -- --host 0.0.0.0"
 
 volumes:
   postgres_data:
