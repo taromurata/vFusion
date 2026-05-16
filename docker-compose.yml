@@ -123,15 +123,18 @@ services:
     volumes:
       - ./frontend:/app
       - /app/node_modules
-    # Run install on each startup so new deps in package.json land
-    # without manually rebuilding the anonymous node_modules volume.
-    # No-op when nothing's changed (npm is fast on a warm cache).
+    # Force a full re-install on every startup. The bind mount above
+    # echoes package-lock.json back to the host, and npm's broken
+    # optional-deps handling (bug #4828) means that a single bad lock
+    # state can persist across restarts forever — even after the
+    # anonymous node_modules volume is wiped, because npm sees a lock
+    # file and reports "up to date" without ever installing the
+    # missing platform-specific rollup binary.
     #
-    # --include=optional forces npm to honor platform-specific optional
-    # deps (rollup's native binaries) even when a package-lock.json
-    # generated on a different arch pruned them out. Works around the
-    # long-standing npm bug at https://github.com/npm/cli/issues/4828.
-    command: sh -c "npm install --no-audit --no-fund --include=optional && npm run dev -- --host 0.0.0.0"
+    # Trade-off: ~30s startup instead of <1s. Worth it for the
+    # reliability — vFusion is restarted infrequently in production.
+    # --include=optional belt-and-suspenders the rollup native bin.
+    command: sh -c "rm -rf node_modules package-lock.json && npm install --no-audit --no-fund --include=optional && npm run dev -- --host 0.0.0.0"
 
 volumes:
   postgres_data:
