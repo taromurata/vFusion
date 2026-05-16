@@ -134,7 +134,15 @@ services:
     # Trade-off: ~30s startup instead of <1s. Worth it for the
     # reliability — vFusion is restarted infrequently in production.
     # --include=optional belt-and-suspenders the rollup native bin.
-    command: sh -c "rm -rf node_modules package-lock.json && npm install --no-audit --no-fund --include=optional && npm run dev -- --host 0.0.0.0"
+    # find -mindepth 1 clears the *contents* of node_modules, not the
+    # directory itself — necessary because /app/node_modules is the
+    # anonymous-volume mount point and ``rm -rf node_modules`` fails
+    # with "Device or resource busy".
+    command: >
+      sh -c "find node_modules -mindepth 1 -maxdepth 1 -exec rm -rf {} + 2>/dev/null;
+             rm -f package-lock.json;
+             npm install --no-audit --no-fund --include=optional &&
+             npm run dev -- --host 0.0.0.0"
 
 volumes:
   postgres_data:
