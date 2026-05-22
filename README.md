@@ -98,33 +98,7 @@ docker compose --profile quick up --build -d
 
 First build takes ~2–3 min (image pulls + npm install + alembic migrations). Subsequent starts are seconds. Then open **http://localhost:15173** — the inbox banner shows your trycloudflare URL within ~10 seconds.
 
-### 2. (Optional) Smoke test
-
-Fire a realistic LPR webhook at the LAN address. Confirms the stack is alive and exercises the classifier. The fake `org_id` isn't a valid UUID so it's rejected by the org-detection logic — the webhook lands in the inbox but no fake Connection is auto-created. The welcome screen's "Stack received its first request ✓" indicator turns on within 2 seconds:
-
-```bash
-curl -X POST http://localhost:18080/hooks/verkada \
-  -H "Content-Type: application/json" \
-  -d '{
-    "org_id": "topSecretOrgDoNotTellAnyone",
-    "webhook_type": "lpr",
-    "created_at": 1778722097,
-    "webhook_id": "f319fb87-4ca6-47de-ae71-67b25aa1dab7",
-    "data": {
-      "camera_id": "93b90c2c-f06d-4fde-b25e-29b211282609",
-      "created": 1778722095,
-      "detected": 1778722097743,
-      "license_plate_number": "BVZ0938",
-      "confidence": 0.93,
-      "crop": [0.25, 0.30, 0.10, 0.13],
-      "license_plate_state": "us-wa"
-    }
-  }'
-```
-
-This won't dismiss the welcome screen — only a real Verkada webhook (with a valid UUID org_id) does that.
-
-### 3. Wire it into Verkada Command
+### 2. Wire it into Verkada Command
 
 The welcome modal in the dashboard shows your public webhook URL with a copy button. Before pasting it into Verkada Command, generate a shared secret — both sides compute HMAC-SHA256 against the same string so vFusion can verify each webhook came from your Verkada org. **Strongly recommended even in quick mode** — without it anyone who finds your trycloudflare URL could forge events.
 
