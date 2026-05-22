@@ -281,13 +281,9 @@ Gemini's analysis doesn't just sit in the vFusion dashboard. The `verkada_helix_
 
 The result lands in Verkada Command as a Helix event you can search and filter:
 
-**Animal detection** — flagged from a wildlife camera.
+**Animal detection** — a wildlife camera flags a "bear or coyote", and Verkada Command's notification rules fire a push alert on the Helix event vFusion posted.
 
-![Helix event — animal detection](docs/images/helix-command-animal.png)
-
-**…and Command can alert on it** — Verkada Command's own notification rules fire on the Helix events vFusion posts, so a "bear or coyote" detection lands as a push alert.
-
-![Helix event with a push notification](docs/images/helix-command-bear.png)
+![Helix event — animal detection with a push alert](docs/images/helix-command-bear.png)
 
 **Delivery / package summary** — what Gemini saw at the front door.
 
