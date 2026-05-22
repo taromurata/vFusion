@@ -34,6 +34,10 @@ export interface PublicConfig {
   ephemeral: boolean;
   needs_onboarding: boolean;
   any_webhook_received: boolean;
+  // True when the gate was dismissed via "Skip for now".
+  onboarding_skipped: boolean;
+  // True once a Verkada org is connected — onboarding is then complete.
+  verkada_connected: boolean;
   // Product brand the dashboard renders in its header / modal / copy.
   // Source-of-truth lives in backend/app/brand.py.
   brand_name: string;

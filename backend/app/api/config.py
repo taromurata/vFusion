@@ -21,7 +21,7 @@ real org (see ``hooks.py::_is_real_org_id``).
 """
 
 import httpx
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -58,6 +58,12 @@ class PublicConfig(BaseModel):
     # the onboarding modal to show a "stack received its first request"
     # confirmation so users know the test-curl smoke check worked.
     any_webhook_received: bool = False
+    # True when the user dismissed the gate via "Skip for now". Lets the
+    # Settings page offer a "Relaunch onboarding" control.
+    onboarding_skipped: bool = False
+    # True once at least one Verkada Connection exists — onboarding is
+    # then genuinely complete and relaunching it is a no-op.
+    verkada_connected: bool = False
     # Source-of-truth brand the frontend renders in its header / modals
     # / copy. Defined in app/brand.py; changing it requires a code edit
     # (and a redeploy) — there's no env var for it on purpose.
@@ -90,8 +96,22 @@ async def _try_quick_tunnel() -> str | None:
     return None
 
 
-async def _onboarding_state(session: AsyncSession) -> tuple[bool, bool]:
-    """Return ``(needs_onboarding, any_webhook_received)``.
+async def _verkada_connected(session: AsyncSession) -> bool:
+    """True once at least one Verkada Connection row exists."""
+    return bool(
+        await session.scalar(
+            select(func.count())
+            .select_from(Connection)
+            .where(Connection.type == "verkada")
+        )
+    )
+
+
+async def _onboarding_state(
+    session: AsyncSession,
+) -> tuple[bool, bool, bool, bool]:
+    """Return ``(needs_onboarding, any_webhook_received, verkada_connected,
+    onboarding_skipped)``.
 
     Onboarding is "needed" until at least one Verkada Connection row
     exists OR the user explicitly skipped the gate. Connections are only
@@ -99,44 +119,50 @@ async def _onboarding_state(session: AsyncSession) -> tuple[bool, bool]:
     precisely when a legitimate Verkada webhook lands; the skip flag lets
     the user open the dashboard early (e.g. to explore in LAN mode).
     """
-    has_connection = await session.scalar(
-        select(func.count()).select_from(Connection).where(Connection.type == "verkada")
-    )
-    any_webhook = await session.scalar(
-        select(func.count()).select_from(WebhookEvent).limit(1)
+    has_connection = await _verkada_connected(session)
+    any_webhook = bool(
+        await session.scalar(
+            select(func.count()).select_from(WebhookEvent).limit(1)
+        )
     )
     skipped = (await settings_store.get_str(ONBOARDING_SKIPPED_KEY)) == "true"
-    return (not bool(has_connection) and not skipped, bool(any_webhook))
+    needs_onboarding = not has_connection and not skipped
+    return (needs_onboarding, any_webhook, has_connection, skipped)
 
 
 @router.get("", response_model=PublicConfig)
 async def public_config(
     session: AsyncSession = Depends(get_session),
 ) -> PublicConfig:
-    needs_onboarding, any_webhook_received = await _onboarding_state(session)
+    needs_onboarding, any_webhook_received, verkada_connected, onboarding_skipped = (
+        await _onboarding_state(session)
+    )
+    onboarding = dict(
+        needs_onboarding=needs_onboarding,
+        any_webhook_received=any_webhook_received,
+        verkada_connected=verkada_connected,
+        onboarding_skipped=onboarding_skipped,
+    )
     quick_url = await _try_quick_tunnel()
     if quick_url:
         return PublicConfig(
             tunnel_mode="quick",
             public_webhook_base=quick_url,
             ephemeral=True,
-            needs_onboarding=needs_onboarding,
-            any_webhook_received=any_webhook_received,
+            **onboarding,
         )
     if settings.public_webhook_base:
         return PublicConfig(
             tunnel_mode="named",
             public_webhook_base=settings.public_webhook_base,
             ephemeral=False,
-            needs_onboarding=needs_onboarding,
-            any_webhook_received=any_webhook_received,
+            **onboarding,
         )
     return PublicConfig(
         tunnel_mode="lan",
         public_webhook_base=None,
         ephemeral=False,
-        needs_onboarding=needs_onboarding,
-        any_webhook_received=any_webhook_received,
+        **onboarding,
     )
 
 
@@ -149,4 +175,22 @@ async def skip_onboarding(session: AsyncSession = Depends(get_session)) -> None:
     auto-creates its Connection — it just no longer re-gates the UI.
     """
     await settings_store.set_value(session, ONBOARDING_SKIPPED_KEY, "true")
+    await session.commit()
+
+
+@router.post("/relaunch-onboarding", status_code=204)
+async def relaunch_onboarding(session: AsyncSession = Depends(get_session)) -> None:
+    """Clear the ``onboarding_skipped`` flag so the first-run gate returns.
+
+    Only meaningful while onboarding is genuinely incomplete. If a Verkada
+    org is already connected, onboarding is done and there's nothing to
+    relaunch — we 409 rather than silently no-op, so the Settings page
+    can surface a clear message.
+    """
+    if await _verkada_connected(session):
+        raise HTTPException(
+            status_code=409,
+            detail="Onboarding is already complete — a Verkada org is connected.",
+        )
+    await settings_store.set_value(session, ONBOARDING_SKIPPED_KEY, "false")
     await session.commit()

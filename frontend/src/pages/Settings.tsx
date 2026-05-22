@@ -1,7 +1,15 @@
 import { useEffect, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
-import { apiGet, apiPost, apiPut, SettingRow, SettingsResponse } from "../lib/api";
+import { ONBOARDING_QUERY_KEY } from "../components/OnboardingGate";
+import {
+  apiGet,
+  apiPost,
+  apiPut,
+  PublicConfig,
+  SettingRow,
+  SettingsResponse,
+} from "../lib/api";
 
 
 export default function Settings() {
@@ -41,7 +49,71 @@ export default function Settings() {
           </div>
         )}
       </Card>
+
+      <OnboardingCard />
     </div>
+  );
+}
+
+
+/**
+ * "Relaunch onboarding" control. Clears the server-side skip flag so the
+ * first-run gate (OnboardingGate) returns. Only meaningful while
+ * onboarding is genuinely incomplete — once a Verkada org is connected,
+ * onboarding is done and the button is replaced with a completed note.
+ */
+function OnboardingCard() {
+  const qc = useQueryClient();
+  const cfg = useQuery({
+    queryKey: ONBOARDING_QUERY_KEY,
+    queryFn: () => apiGet<PublicConfig>("/api/config"),
+  });
+
+  const relaunch = useMutation({
+    mutationFn: () => apiPost("/api/config/relaunch-onboarding", {}),
+    // Invalidating the shared key re-evaluates the gate immediately —
+    // needs_onboarding flips true and the modal mounts over the app.
+    onSuccess: () => qc.invalidateQueries({ queryKey: ONBOARDING_QUERY_KEY }),
+  });
+
+  const connected = cfg.data?.verkada_connected ?? false;
+  const skipped = cfg.data?.onboarding_skipped ?? false;
+
+  return (
+    <Card title="Onboarding">
+      <p className="text-xs text-slate-400 mb-4">
+        The first-run setup modal walks through wiring a Verkada webhook into
+        this install. Relaunch it if you skipped setup and want to finish it.
+      </p>
+      {!cfg.data ? (
+        <div className="text-sm text-slate-500">Loading…</div>
+      ) : connected ? (
+        <div className="text-sm text-slate-300 border border-white/10 rounded-md p-3 bg-white/5">
+          <span className="text-emerald-300 mr-1">✓</span>
+          Onboarding complete — a Verkada org is connected. Nothing to relaunch.
+        </div>
+      ) : (
+        <div className="border border-white/10 rounded-md p-4 bg-white/5 flex items-center justify-between gap-4 flex-wrap">
+          <div className="text-[11px] text-slate-500 leading-relaxed min-w-0 flex-1">
+            {skipped
+              ? "Onboarding was skipped. Relaunch shows the setup modal again so you can wire up a webhook."
+              : "Onboarding hasn't been skipped — the setup modal is still the active gate."}
+          </div>
+          <button
+            onClick={() => relaunch.mutate()}
+            disabled={!skipped || relaunch.isPending}
+            className="shrink-0 text-xs px-3 py-1.5 rounded bg-sky-700 hover:bg-sky-600 text-white disabled:opacity-40 disabled:cursor-not-allowed"
+          >
+            {relaunch.isPending ? "Relaunching…" : "Relaunch onboarding"}
+          </button>
+        </div>
+      )}
+      {relaunch.isError && (
+        <div className="text-xs text-rose-300 mt-2">
+          {(relaunch.error as Error).message}
+        </div>
+      )}
+    </Card>
   );
 }
 

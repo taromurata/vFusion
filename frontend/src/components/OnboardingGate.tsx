@@ -3,9 +3,10 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 
 import { apiGet, apiPost, PublicConfig } from "../lib/api";
 
-// react-query key for the onboarding poll. Shared so the Skip button can
-// invalidate it and force the gate to re-evaluate immediately.
-const ONBOARDING_QUERY_KEY = ["public-config-onboarding"];
+// react-query key for the onboarding poll. Exported so the Skip button
+// and the Settings "Relaunch onboarding" control can invalidate it and
+// force the gate to re-evaluate immediately.
+export const ONBOARDING_QUERY_KEY = ["public-config-onboarding"];
 
 /**
  * Gates the entire app behind a first-run onboarding modal until a real
