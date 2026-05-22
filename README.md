@@ -252,4 +252,4 @@ frontend/       Vite + React + Tailwind
 
 ## Author
 
-Built by **Casey Keller** ([PacketTrace](https://github.com/PacketTrace)) — a Verkada SE. vFusion is a personal project and is not an official Verkada product.
+Built by **Casey Keller** ([GitHub](https://github.com/PacketTrace) · [LinkedIn](https://www.linkedin.com/in/casey-keller-b00246b6/)) — a Verkada SE. vFusion is a personal project and is not an official Verkada product.
