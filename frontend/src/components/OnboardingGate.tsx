@@ -1,7 +1,11 @@
 import { useEffect, useState } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 
-import { apiGet, PublicConfig } from "../lib/api";
+import { apiGet, apiPost, PublicConfig } from "../lib/api";
+
+// react-query key for the onboarding poll. Shared so the Skip button can
+// invalidate it and force the gate to re-evaluate immediately.
+const ONBOARDING_QUERY_KEY = ["public-config-onboarding"];
 
 /**
  * Gates the entire app behind a first-run onboarding modal until a real
@@ -23,7 +27,7 @@ import { apiGet, PublicConfig } from "../lib/api";
  */
 export default function OnboardingGate({ children }: { children: React.ReactNode }) {
   const cfg = useQuery({
-    queryKey: ["public-config-onboarding"],
+    queryKey: ONBOARDING_QUERY_KEY,
     queryFn: () => apiGet<PublicConfig>("/api/config"),
     // Poll fast while gated. After we dismiss, the WebhookEndpointBanner
     // takes over with a slower cadence on the inbox page.
@@ -110,6 +114,76 @@ function OnboardingModal({ cfg }: { cfg: PublicConfig }) {
         )}
 
         <WaitingFooter anyWebhookReceived={cfg.any_webhook_received} mode={mode} />
+        <SkipControl />
+      </div>
+    </div>
+  );
+}
+
+
+/**
+ * "Skip for now" escape hatch on the onboarding modal. Persists the skip
+ * server-side (POST /api/config/skip-onboarding → app_settings), then
+ * invalidates the onboarding poll so the gate re-evaluates and unmounts
+ * the modal. Two-step (link → confirm) so it isn't a single stray click,
+ * since skipping opens the dashboard before any webhook is verified.
+ */
+function SkipControl() {
+  const queryClient = useQueryClient();
+  const [confirming, setConfirming] = useState(false);
+  const [skipping, setSkipping] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const skip = async () => {
+    setSkipping(true);
+    setError(null);
+    try {
+      await apiPost("/api/config/skip-onboarding", {});
+      // needs_onboarding flips to false on the refetch — the gate then
+      // renders the dashboard and this modal unmounts.
+      await queryClient.invalidateQueries({ queryKey: ONBOARDING_QUERY_KEY });
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Failed to skip setup");
+      setSkipping(false);
+    }
+  };
+
+  if (!confirming) {
+    return (
+      <div className="text-center">
+        <button
+          onClick={() => setConfirming(true)}
+          className="text-xs text-slate-500 hover:text-slate-300 underline underline-offset-2"
+        >
+          Skip for now — explore the dashboard without a webhook
+        </button>
+      </div>
+    );
+  }
+
+  return (
+    <div className="rounded border border-amber-900/50 bg-amber-950/30 px-3 py-2.5 space-y-2">
+      <div className="text-[11px] text-amber-200/90">
+        Skipping opens the dashboard before any Verkada webhook has been verified.
+        Flows have no real events to trigger on until you wire one up — set that up
+        on the Connections page. This gate won't show again.
+      </div>
+      {error && <div className="text-[11px] text-red-300">{error}</div>}
+      <div className="flex items-center gap-2">
+        <button
+          onClick={skip}
+          disabled={skipping}
+          className="text-xs px-3 py-1.5 rounded bg-amber-700 hover:bg-amber-600 text-white disabled:opacity-50"
+        >
+          {skipping ? "Skipping…" : "Skip anyway"}
+        </button>
+        <button
+          onClick={() => setConfirming(false)}
+          disabled={skipping}
+          className="text-xs px-3 py-1.5 rounded border border-white/15 bg-white/5 hover:bg-white/10 text-slate-200"
+        >
+          Cancel
+        </button>
       </div>
     </div>
   );

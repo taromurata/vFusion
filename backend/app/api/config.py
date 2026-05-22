@@ -26,10 +26,16 @@ from pydantic import BaseModel
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app import settings_store
 from app.brand import BRAND_NAME
 from app.config import settings
 from app.db import get_session
 from app.models import Connection, WebhookEvent
+
+
+# app_settings key: set to "true" when the user dismisses the first-run
+# onboarding gate manually instead of waiting for a real Verkada webhook.
+ONBOARDING_SKIPPED_KEY = "onboarding_skipped"
 
 
 router = APIRouter(prefix="/api/config", tags=["config"])
@@ -87,9 +93,11 @@ async def _try_quick_tunnel() -> str | None:
 async def _onboarding_state(session: AsyncSession) -> tuple[bool, bool]:
     """Return ``(needs_onboarding, any_webhook_received)``.
 
-    Onboarding is "needed" until at least one Verkada Connection row exists.
-    Connections are only auto-created on real-org-UUID webhooks, so this
-    flag flips precisely when a legitimate Verkada webhook lands.
+    Onboarding is "needed" until at least one Verkada Connection row
+    exists OR the user explicitly skipped the gate. Connections are only
+    auto-created on real-org-UUID webhooks, so the connection check flips
+    precisely when a legitimate Verkada webhook lands; the skip flag lets
+    the user open the dashboard early (e.g. to explore in LAN mode).
     """
     has_connection = await session.scalar(
         select(func.count()).select_from(Connection).where(Connection.type == "verkada")
@@ -97,7 +105,8 @@ async def _onboarding_state(session: AsyncSession) -> tuple[bool, bool]:
     any_webhook = await session.scalar(
         select(func.count()).select_from(WebhookEvent).limit(1)
     )
-    return (not bool(has_connection), bool(any_webhook))
+    skipped = (await settings_store.get_str(ONBOARDING_SKIPPED_KEY)) == "true"
+    return (not bool(has_connection) and not skipped, bool(any_webhook))
 
 
 @router.get("", response_model=PublicConfig)
@@ -129,3 +138,15 @@ async def public_config(
         needs_onboarding=needs_onboarding,
         any_webhook_received=any_webhook_received,
     )
+
+
+@router.post("/skip-onboarding", status_code=204)
+async def skip_onboarding(session: AsyncSession = Depends(get_session)) -> None:
+    """Dismiss the first-run onboarding gate without waiting for a real
+    Verkada webhook. Persists ``onboarding_skipped=true`` in app_settings,
+    so ``/api/config`` then reports ``needs_onboarding=false`` for every
+    browser and survives restarts. A real webhook arriving later still
+    auto-creates its Connection — it just no longer re-gates the UI.
+    """
+    await settings_store.set_value(session, ONBOARDING_SKIPPED_KEY, "true")
+    await session.commit()
