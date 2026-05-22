@@ -19,6 +19,31 @@ Self-hosted, Verkada-flavored workflow automation — a visual router for webhoo
 - 🌍 **Public URLs built-in** — two deploy modes: quick mode (free TryCloudflare URL, zero Cloudflare setup) and production (named tunnel on your own domain). URL auto-displayed in the UI banner
 - 🔐 **Secrets at rest** — Fernet encryption for stored API keys + signing secrets, HMAC webhook signature verification, sensitive headers redacted before persistence
 
+## Requirements
+
+Line these up before you start. Docker is the only thing you install on the host — Postgres, Redis, Python, Node, and ffmpeg all run inside containers.
+
+### Required
+
+- **A host to run it on** — Linux, macOS, or Windows. Keep it always-on for 24/7 webhook capture.
+- **Docker Desktop** (or Docker Engine + Compose v2). Verify with `docker --version` and `docker compose version`.
+- **A Verkada Command organization** with admin access — needed to create the webhook (Admin → API & Integrations → Webhooks) and to generate an API key.
+- **A Verkada API key** — generated in Verkada Command. Used to pull camera footage, post Helix events, unlock doors, and call catalog endpoints. Scope its permissions to what your flows actually need.
+
+### Optional — needed for specific features
+
+- **A Google Gemini API key** — free to create at [aistudio.google.com](https://aistudio.google.com/). Required only for the Gemini video / still-image analysis actions and the Workbench. Flows that just post Helix events, unlock doors, or call generic API endpoints don't need it. Gemini usage is billed by Google; vFusion tracks an estimated cost.
+- **A Cloudflare account + a domain on Cloudflare** — only for **production mode** (a stable webhook URL on your own domain). **Quick mode** needs neither — it uses a free, ephemeral TryCloudflare URL.
+- **Tailscale or a VPN** — recommended for remote admin access. The dashboard and admin API have no built-in auth, so don't expose them to the public internet.
+
+### Depends on what your flows do
+
+The app runs fine without these, but the matching actions won't have anything to act on:
+
+- Verkada **cameras** — for Gemini video / still-image analysis and Helix events.
+- Verkada **Access** doors — for the unlock-door action.
+- **LPR-capable cameras** — for license-plate webhook events.
+
 ## Two ways to run
 
 | Mode | Webhook URL | Best for |
