@@ -168,6 +168,14 @@ async def set_value(session: AsyncSession, key: str, value: str | None) -> None:
     _cache_ts = 0.0
 
 
+def invalidate_cache() -> None:
+    """Force the next settings read to hit Postgres. Call after a bulk
+    mutation that bypasses ``set_value`` — e.g. the Settings "Reset
+    everything" wipe truncates ``app_settings`` directly."""
+    global _cache_ts
+    _cache_ts = 0.0
+
+
 def all_specs() -> list[dict[str, Any]]:
     """For the API: every registered key with its metadata."""
     return [

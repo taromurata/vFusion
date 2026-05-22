@@ -1,13 +1,14 @@
 """Settings API — UI-editable runtime knobs (retention, etc.)."""
 
+import shutil
 from pathlib import Path
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
-from sqlalchemy import func, select
+from sqlalchemy import func, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.assets import clear_all_assets
+from app.assets import ASSET_ROOT, clear_all_assets
 from app.connectors.verkada.footage import CLIP_ROOT, IMAGE_ROOT
 from app.db import get_session
 from app.models import Run, WebhookAsset, WebhookEvent
@@ -15,6 +16,7 @@ from app.settings_store import (
     SETTINGS,
     all_specs,
     get_str,
+    invalidate_cache,
     set_value,
 )
 
@@ -243,4 +245,75 @@ async def update_setting(
         default=spec.default,
         allow_zero=spec.allow_zero,
         value=effective,
+    )
+
+
+# Tables wiped by "Reset everything" — all user data + config. CASCADE
+# handles FK ordering. Intentionally NOT listed (and so kept):
+#   - gemini_pricing      — reference data, re-seeded on backend boot
+#   - verkada_api_specs / verkada_api_endpoints — a cache of Verkada's
+#     public OpenAPI catalog, re-crawled on a schedule; not user data
+#   - alembic_version     — migration state
+_RESET_TABLES: tuple[str, ...] = (
+    "webhook_assets",
+    "webhook_events",
+    "run_events",
+    "runs",
+    "flows",
+    "prompt_templates",
+    "verkada_helix_event_types",
+    "verkada_cameras",
+    "verkada_doors",
+    "connections",
+    "app_settings",
+)
+
+
+class ResetResult(BaseModel):
+    tables_cleared: int
+    files_removed: int
+
+
+def _clear_dir_contents(root: Path) -> int:
+    """Delete everything inside ``root`` without removing ``root`` itself
+    (it may be a docker volume mount point). Returns the count removed."""
+    if not root.exists():
+        return 0
+    removed = 0
+    for child in root.iterdir():
+        try:
+            if child.is_dir():
+                shutil.rmtree(child)
+            else:
+                child.unlink()
+            removed += 1
+        except OSError:
+            continue
+    return removed
+
+
+@router.post("/reset", response_model=ResetResult)
+async def reset_everything(
+    session: AsyncSession = Depends(get_session),
+) -> ResetResult:
+    """Wipe the install back to a first-run state: every connection,
+    flow, run, webhook event, prompt template, synced camera/door, and
+    all runtime config. Captured media on disk is deleted too. The
+    Fernet encryption key and the Verkada API catalog are kept.
+
+    Destructive and irreversible — the UI gates it behind a type-to-
+    confirm. There's no auth on the API, same as the rest of the admin
+    surface; protect the dashboard at the network layer.
+    """
+    await session.execute(
+        text(f"TRUNCATE {', '.join(_RESET_TABLES)} CASCADE")
+    )
+    await session.commit()
+    # app_settings was just truncated out from under the settings cache.
+    invalidate_cache()
+    files_removed = sum(
+        _clear_dir_contents(root) for root in (ASSET_ROOT, CLIP_ROOT, IMAGE_ROOT)
+    )
+    return ResetResult(
+        tables_cleared=len(_RESET_TABLES), files_removed=files_removed
     )

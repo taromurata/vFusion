@@ -51,6 +51,83 @@ export default function Settings() {
       </Card>
 
       <OnboardingCard />
+
+      <DangerZoneCard />
+    </div>
+  );
+}
+
+
+/**
+ * "Reset everything" — wipes the install back to first-run state.
+ * Gated behind a type-to-confirm so it can't go off on a stray click.
+ * On success the whole page reloads, dropping every stale react-query
+ * cache and landing the user back on the onboarding gate.
+ */
+function DangerZoneCard() {
+  const [confirm, setConfirm] = useState("");
+  const [done, setDone] = useState(false);
+
+  const reset = useMutation({
+    mutationFn: () =>
+      apiPost<{ tables_cleared: number; files_removed: number }>(
+        "/api/settings/reset",
+        {},
+      ),
+    onSuccess: () => {
+      setDone(true);
+      // Everything's gone — hard reload into the fresh onboarding flow.
+      window.setTimeout(() => {
+        window.location.href = "/";
+      }, 1200);
+    },
+  });
+
+  const armed = confirm.trim().toUpperCase() === "RESET";
+
+  return (
+    <div className="bg-white/5 backdrop-blur-sm border border-rose-900/50 rounded-lg p-4">
+      <h2 className="text-xs uppercase tracking-wider text-rose-300 mb-3">
+        Danger zone
+      </h2>
+      <div className="border border-rose-900/40 rounded-md p-4 bg-rose-950/20">
+        <div className="text-sm font-medium text-slate-200">
+          Reset everything
+        </div>
+        <p className="text-[11px] text-slate-400 mt-1 leading-relaxed">
+          Permanently deletes all connections, flows, runs, webhook events,
+          prompt templates, synced cameras / doors, captured media, and
+          configuration — returning the app to a first-run state. The
+          encryption key and the Verkada API catalog are kept.{" "}
+          <span className="text-rose-300">This cannot be undone.</span>
+        </p>
+        {done ? (
+          <div className="text-sm text-rose-200 mt-3">
+            Reset complete — reloading…
+          </div>
+        ) : (
+          <div className="flex items-center gap-2 mt-3 flex-wrap">
+            <input
+              value={confirm}
+              onChange={(e) => setConfirm(e.target.value)}
+              placeholder="Type RESET to confirm"
+              className="w-52 px-2 py-1.5 rounded bg-slate-950 border border-white/15 text-sm"
+            />
+            <button
+              onClick={() => reset.mutate()}
+              disabled={!armed || reset.isPending}
+              className="text-xs px-3 py-1.5 rounded bg-rose-700 hover:bg-rose-600 text-white disabled:opacity-30 disabled:cursor-not-allowed"
+            >
+              {reset.isPending ? "Resetting…" : "Reset everything"}
+            </button>
+          </div>
+        )}
+        {reset.isError && (
+          <div className="text-xs text-rose-300 mt-2">
+            {(reset.error as Error).message}
+          </div>
+        )}
+      </div>
     </div>
   );
 }
