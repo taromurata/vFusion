@@ -290,7 +290,7 @@ function TunnelModeBody({
         </div>
         <ol className="space-y-1.5 text-sm text-slate-300 list-decimal list-inside marker:text-slate-500">
           <li>
-            Verkada Command → <strong className="text-slate-100">Settings</strong> → <strong className="text-slate-100">Webhooks</strong> → <strong className="text-slate-100">Create webhook</strong>
+            Verkada Command → <strong className="text-slate-100">Admin</strong> → <strong className="text-slate-100">API &amp; Integrations</strong> → <strong className="text-slate-100">Webhooks</strong> → <strong className="text-slate-100">Add</strong>
           </li>
           <li>Paste the URL above as <strong className="text-slate-100">Endpoint URL</strong></li>
           <li>Paste the signing secret above as <strong className="text-slate-100">Shared secret</strong></li>
