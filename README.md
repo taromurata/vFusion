@@ -249,3 +249,7 @@ frontend/       Vite + React + Tailwind
 - Backend code is hot-reloaded via volume mount + `uvicorn --reload`. Frontend uses Vite HMR.
 - To wipe captured webhooks: `docker compose exec postgres psql -U verkada -d verkadaroute -c "TRUNCATE webhook_events;"`
 - To reset everything: `docker compose down -v`
+
+## Author
+
+Built by **Casey Keller** ([PacketTrace](https://github.com/PacketTrace)) — a Verkada SE. vFusion is a personal project and is not an official Verkada product.
