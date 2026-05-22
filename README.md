@@ -45,6 +45,32 @@ Self-hosted, Verkada-flavored workflow automation — a visual router for webhoo
 
 ![Prompt templates](docs/images/templates.png)
 
+## From analysis to Verkada Helix
+
+Gemini's analysis doesn't just sit in the vFusion dashboard. The `verkada_helix_event` action posts it straight back into Verkada Command as a searchable Helix event — attached to the camera and timestamp.
+
+**The vFusion side** — a run analyzes the frame, then posts the summary to Helix as a second step.
+
+![Run posting to Helix](docs/images/helix-post-run.png)
+
+The result lands in Verkada Command as a Helix event you can search and filter:
+
+**Animal detection** — flagged from a wildlife camera.
+
+![Helix event — animal detection](docs/images/helix-command-animal.png)
+
+**Delivery / package summary** — what Gemini saw at the front door.
+
+![Helix event — delivery](docs/images/helix-command-delivery.png)
+
+**Text extraction (OCR)** — vFusion reads sign and label text off the frame…
+
+![vFusion OCR run](docs/images/run-ocr.png)
+
+…and writes it to a Helix attribute in Command.
+
+![Helix event — OCR](docs/images/helix-command-ocr.png)
+
 ## Requirements
 
 Line these up before you start. Docker is the only thing you install on the host — Postgres, Redis, Python, Node, and ffmpeg all run inside containers.
