@@ -6,6 +6,8 @@ Ever wish you could fuse together custom Verkada API pipelines? Now it's possibl
 
 Self-hosted, Verkada-flavored workflow automation — a visual router for webhooks and API events. Think Zapier/n8/make.com, but built around the Verkada API surface (Helix, Access, etc.).
 
+📸 **[Jump to screenshots →](#screenshots)**
+
 ## Features
 
 - 📥 **Webhook inbox** — catch any Verkada webhook at `/hooks/*`, auto-classify into family (camera / access / lpr / sensor / intercom), auto-detect new orgs on first sight
@@ -18,58 +20,6 @@ Self-hosted, Verkada-flavored workflow automation — a visual router for webhoo
 - 📊 **Stats & cost** — ingest counters (24h / 7d / 30d), top event types with inbox drill-down, Gemini spend tracking per model, real-time server load (CPU / memory / disk)
 - 🌍 **Public URLs built-in** — two deploy modes: quick mode (free TryCloudflare URL, zero Cloudflare setup) and production (named tunnel on your own domain). URL auto-displayed in the UI banner
 - 🔐 **Secrets at rest** — Fernet encryption for stored API keys + signing secrets, HMAC webhook signature verification, sensitive headers redacted before persistence
-
-## Screenshots
-
-**Visual flow editor** — a drag-and-drop canvas for event-driven automations: conditions, branches, and a per-step run button for testing.
-
-![Visual flow editor](docs/images/flow-editor.png)
-
-**Webhook inbox** — every Verkada webhook captured, auto-classified into a family, and HMAC signature-verified.
-
-![Webhook inbox](docs/images/webhook-inbox.png)
-
-**Workbench** — a one-shot Gemini test runner: pick a camera, write a prompt, see the result before committing it to a flow.
-
-![Workbench](docs/images/workbench.png)
-
-**Run detail** — live phase progress, the frame Gemini saw, its summary, and an estimated cost.
-
-![Run detail](docs/images/run-detail.png)
-
-**Reproducible runs** — the exact trigger payload, prompt, and model are recorded next to every result.
-
-![Run output and trigger payload](docs/images/run-output.png)
-
-**Prompt templates** — save and reuse analysis prompts across actions and the Workbench.
-
-![Prompt templates](docs/images/templates.png)
-
-## From analysis to Verkada Helix
-
-Gemini's analysis doesn't just sit in the vFusion dashboard. The `verkada_helix_event` action posts it straight back into Verkada Command as a searchable Helix event — attached to the camera and timestamp.
-
-**The vFusion side** — a run analyzes the frame, then posts the summary to Helix as a second step.
-
-![Run posting to Helix](docs/images/helix-post-run.png)
-
-The result lands in Verkada Command as a Helix event you can search and filter:
-
-**Animal detection** — flagged from a wildlife camera.
-
-![Helix event — animal detection](docs/images/helix-command-animal.png)
-
-**Delivery / package summary** — what Gemini saw at the front door.
-
-![Helix event — delivery](docs/images/helix-command-delivery.png)
-
-**Text extraction (OCR)** — vFusion reads sign and label text off the frame…
-
-![vFusion OCR run](docs/images/run-ocr.png)
-
-…and writes it to a Helix attribute in Command.
-
-![Helix event — OCR](docs/images/helix-command-ocr.png)
 
 ## Requirements
 
@@ -294,6 +244,58 @@ frontend/       Vite + React + Tailwind
   src/pages/    one component per top-level route
   src/components/  shared UI (JSON viewer, etc.)
 ```
+
+## Screenshots
+
+**Visual flow editor** — a drag-and-drop canvas for event-driven automations: conditions, branches, and a per-step run button for testing.
+
+![Visual flow editor](docs/images/flow-editor.png)
+
+**Webhook inbox** — every Verkada webhook captured, auto-classified into a family, and HMAC signature-verified.
+
+![Webhook inbox](docs/images/webhook-inbox.png)
+
+**Workbench** — a one-shot Gemini test runner: pick a camera, write a prompt, see the result before committing it to a flow.
+
+![Workbench](docs/images/workbench.png)
+
+**Run detail** — live phase progress, the frame Gemini saw, its summary, and an estimated cost.
+
+![Run detail](docs/images/run-detail.png)
+
+**Reproducible runs** — the exact trigger payload, prompt, and model are recorded next to every result.
+
+![Run output and trigger payload](docs/images/run-output.png)
+
+**Prompt templates** — save and reuse analysis prompts across actions and the Workbench.
+
+![Prompt templates](docs/images/templates.png)
+
+## From analysis to Verkada Helix
+
+Gemini's analysis doesn't just sit in the vFusion dashboard. The `verkada_helix_event` action posts it straight back into Verkada Command as a searchable Helix event — attached to the camera and timestamp.
+
+**The vFusion side** — a run analyzes the frame, then posts the summary to Helix as a second step.
+
+![Run posting to Helix](docs/images/helix-post-run.png)
+
+The result lands in Verkada Command as a Helix event you can search and filter:
+
+**Animal detection** — flagged from a wildlife camera.
+
+![Helix event — animal detection](docs/images/helix-command-animal.png)
+
+**Delivery / package summary** — what Gemini saw at the front door.
+
+![Helix event — delivery](docs/images/helix-command-delivery.png)
+
+**Text extraction (OCR)** — vFusion reads sign and label text off the frame…
+
+![vFusion OCR run](docs/images/run-ocr.png)
+
+…and writes it to a Helix attribute in Command.
+
+![Helix event — OCR](docs/images/helix-command-ocr.png)
 
 ## Dev notes
 
