@@ -120,6 +120,10 @@ async def login(
     return AuthStatus(password_set=True, authenticated=True)
 
 
-@router.post("/logout", status_code=204)
-async def logout(response: Response) -> None:
+@router.post("/logout")
+async def logout(response: Response) -> dict[str, bool]:
+    """Clear the session cookie. Returns 200 with a trivial body —
+    FastAPI 0.115's route registration disallows 204 + a Response
+    parameter (it considers them incompatible at decoration time)."""
     response.delete_cookie(SESSION_COOKIE, path="/")
+    return {"ok": True}
