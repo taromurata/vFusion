@@ -351,6 +351,7 @@ export interface ActionFieldSpec {
     | "text"
     | "connection_ref"
     | "door_ref"
+    | "scenario_ref"
     | "verkada_endpoint_ref"
     | "verkada_request_params"
     | "json"
@@ -478,6 +479,17 @@ export interface RunListResponse {
 }
 
 // ---- Verkada resources ----
+
+export interface KnownScenario {
+  connection_id: string;
+  scenario_id: string;
+  name: string | null;
+  scenario_type: string | null;
+  site_id: string | null;
+  site_name: string | null;
+  raw: unknown;
+  synced_at: string | null;
+}
 
 export interface KnownDoor {
   door_id: string;

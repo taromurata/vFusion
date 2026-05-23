@@ -1,4 +1,4 @@
-"""Action: Verkada admin door unlock."""
+"""Action: release (deactivate) a previously-activated Verkada Access scenario."""
 
 from typing import Any
 
@@ -19,15 +19,13 @@ SCHEMA: dict[str, Any] = {
             "help": "Which stored Verkada org's API key to use.",
         },
         {
-            "name": "door_id",
-            "label": "Door",
-            "type": "door_ref",
+            "name": "scenario_id",
+            "label": "Scenario",
+            "type": "scenario_ref",
             "required": True,
             "help": (
-                f"Pick from doors {BRAND_NAME} has seen, or paste a door_id UUID. "
-                "The door must have **Door Management via API** enabled in "
-                "Verkada Command → Access → the door's settings, or the unlock "
-                "call will be rejected even with the right API permissions."
+                f"Pick from scenarios {BRAND_NAME} has synced. Release "
+                "is a no-op on a scenario that's already INACTIVE."
             ),
         },
     ]
@@ -35,8 +33,8 @@ SCHEMA: dict[str, Any] = {
 
 
 SAMPLE_OUTPUT: dict[str, Any] = {
-    "action": "verkada_unlock_door",
-    "door_id": "...",
+    "action": "verkada_release_scenario",
+    "scenario_id": "...",
     "verkada_response": {
         "status_code": 200,
         "body": {},
@@ -46,12 +44,12 @@ SAMPLE_OUTPUT: dict[str, Any] = {
 
 async def run(
     config: dict[str, Any],
-    ctx: dict[str, Any],  # noqa: ARG001 — preset doesn't read trigger/steps yet
+    ctx: dict[str, Any],  # noqa: ARG001
     connection: Connection,
 ) -> dict[str, Any]:
-    door_id = config.get("door_id")
-    if not door_id or not isinstance(door_id, str):
-        raise ValueError("action config missing required 'door_id'")
+    scenario_id = config.get("scenario_id")
+    if not scenario_id or not isinstance(scenario_id, str):
+        raise ValueError("action config missing required 'scenario_id'")
 
     secret = decrypt_secret(connection.encrypted_secret)
     api_key = secret.get("api_key")
@@ -62,9 +60,9 @@ async def run(
     region = secret.get("region") or None
 
     client = VerkadaClient(api_key=api_key, base_url=region)
-    result = await client.unlock_door(door_id)
+    result = await client.release_scenario(scenario_id)
     return {
-        "action": "verkada_unlock_door",
-        "door_id": door_id,
+        "action": "verkada_release_scenario",
+        "scenario_id": scenario_id,
         "verkada_response": result,
     }

@@ -9,6 +9,7 @@ import {
   Connection,
   HelixEventType,
   KnownDoor,
+  KnownScenario,
   PromptTemplate,
   TriggerField,
 } from "../lib/api";
@@ -49,6 +50,17 @@ export default function StepConfigForm({
   const doors = useQuery({
     queryKey: ["verkada-doors"],
     queryFn: () => apiGet<KnownDoor[]>("/api/verkada/doors"),
+  });
+  const scenarios = useQuery({
+    queryKey: ["verkada-scenarios", config.connection_id],
+    queryFn: () => {
+      const cid = config.connection_id;
+      const qs =
+        typeof cid === "string" && cid
+          ? `?connection_id=${encodeURIComponent(cid)}`
+          : "";
+      return apiGet<KnownScenario[]>(`/api/verkada/scenarios${qs}`);
+    },
   });
   const cameras = useCameras();
   // User-saved prompt templates (Templates page). Merged into any field
@@ -208,6 +220,7 @@ export default function StepConfigForm({
           onChange,
           connections.data ?? [],
           doors.data ?? [],
+          scenarios.data ?? [],
           triggerFamily,
           triggerNotificationType,
           priorSteps,
@@ -242,6 +255,7 @@ function renderControl(
   setAll: (config: Record<string, unknown>) => void,
   connections: Connection[],
   doors: KnownDoor[],
+  scenariosList: KnownScenario[],
   triggerFamily: string | undefined,
   triggerNotificationType: string | undefined,
   priorSteps: PriorStep[],
@@ -288,6 +302,38 @@ function renderControl(
           className="w-full px-2 py-1.5 mt-1 rounded bg-white/5 border border-white/10 text-xs font-mono"
           placeholder="or paste door_id UUID"
         />
+      </>
+    );
+  }
+  if (f.type === "scenario_ref") {
+    const list = scenariosList;
+    return (
+      <>
+        <select
+          value={(config[f.name] as string) ?? ""}
+          onChange={(e) => setOne(f.name, e.target.value)}
+          className="w-full px-2 py-1.5 rounded bg-white/5 border border-white/15 text-sm"
+        >
+          <option value="">— pick a scenario —</option>
+          {list.map((s) => (
+            <option key={s.scenario_id} value={s.scenario_id}>
+              {s.name ?? "(unnamed)"}
+              {s.scenario_type ? ` — ${s.scenario_type}` : ""}
+            </option>
+          ))}
+        </select>
+        <input
+          value={(config[f.name] as string) ?? ""}
+          onChange={(e) => setOne(f.name, e.target.value)}
+          className="w-full px-2 py-1.5 mt-1 rounded bg-white/5 border border-white/10 text-xs font-mono"
+          placeholder="or paste scenario_id UUID"
+        />
+        {list.length === 0 && (
+          <div className="text-[11px] text-amber-300/80 mt-1">
+            No scenarios synced yet — click <strong>Sync scenarios</strong> on
+            the Connections page first.
+          </div>
+        )}
       </>
     );
   }

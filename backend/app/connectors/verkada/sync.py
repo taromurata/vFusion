@@ -281,28 +281,35 @@ async def sync_scenarios_for_connection(connection_id) -> dict[str, Any]:
         for sc in scenarios:
             if not isinstance(sc, dict):
                 continue
-            # Try a few likely key names — once we see live data we'll
-            # tighten this up. The unique identifier is mandatory; the
-            # rest are best-effort.
-            scenario_id = sc.get("scenario_id") or sc.get("id") or sc.get("uid")
+            scenario_id = sc.get("scenario_id")
             if not isinstance(scenario_id, str) or not scenario_id:
                 continue
-            site = sc.get("site") if isinstance(sc.get("site"), dict) else None
-            site_id = (site or {}).get("site_id") or sc.get("site_id")
-            site_name = (site or {}).get("name") or sc.get("site_name")
+            # Real payload: `sites` is a list of bare UUID strings (no
+            # names), `site_count` tells you how many. Stash the first
+            # UUID when the scenario is scoped to a single site so the
+            # picker can show it as a tiebreaker; otherwise leave null.
+            sites = sc.get("sites") if isinstance(sc.get("sites"), list) else []
+            site_id = (
+                sites[0]
+                if isinstance(sites, list)
+                and len(sites) == 1
+                and isinstance(sites[0], str)
+                else None
+            )
+            scenario_type = sc.get("type")
             session.add(
                 VerkadaScenario(
                     connection_id=conn.id,
                     scenario_id=scenario_id,
                     name=sc.get("name") if isinstance(sc.get("name"), str) else None,
-                    scenario_type=(
-                        sc.get("scenario_type")
-                        or sc.get("type")
-                        if isinstance(sc.get("scenario_type") or sc.get("type"), str)
-                        else None
-                    ),
-                    site_id=site_id if isinstance(site_id, str) else None,
-                    site_name=site_name if isinstance(site_name, str) else None,
+                    scenario_type=scenario_type
+                    if isinstance(scenario_type, str)
+                    else None,
+                    site_id=site_id,
+                    # No human-readable site name in the scenario payload —
+                    # would require a separate /access/v1/sites sync to
+                    # resolve. Leave null for now.
+                    site_name=None,
                     raw=sc,
                 )
             )

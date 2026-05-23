@@ -38,6 +38,16 @@ from app.engine.actions.verkada_unlock_door import (
     SCHEMA as VERKADA_UNLOCK_DOOR_SCHEMA,
     run as run_verkada_unlock_door,
 )
+from app.engine.actions.verkada_activate_scenario import (
+    SAMPLE_OUTPUT as VERKADA_ACTIVATE_SCENARIO_OUTPUT,
+    SCHEMA as VERKADA_ACTIVATE_SCENARIO_SCHEMA,
+    run as run_verkada_activate_scenario,
+)
+from app.engine.actions.verkada_release_scenario import (
+    SAMPLE_OUTPUT as VERKADA_RELEASE_SCENARIO_OUTPUT,
+    SCHEMA as VERKADA_RELEASE_SCENARIO_SCHEMA,
+    run as run_verkada_release_scenario,
+)
 
 
 class ActionSpec(NamedTuple):
@@ -104,6 +114,33 @@ ACTIONS: dict[str, ActionSpec] = {
         output_sample=VERKADA_UNLOCK_DOOR_OUTPUT,
         run=run_verkada_unlock_door,
         default_step_name="unlock_door",
+    ),
+    "verkada_activate_scenario": ActionSpec(
+        type="verkada_activate_scenario",
+        label="Verkada: Activate Access scenario",
+        description=(
+            "Activate a configured Access scenario (Lockdown, Evacuate, "
+            "Shelter, Hold, Secure). Use this for automated lockdowns, "
+            "POI responses, or any flow that needs to fire a Command "
+            "scenario without a human in the loop."
+        ),
+        schema=VERKADA_ACTIVATE_SCENARIO_SCHEMA,
+        output_sample=VERKADA_ACTIVATE_SCENARIO_OUTPUT,
+        run=run_verkada_activate_scenario,
+        default_step_name="activate_scenario",
+    ),
+    "verkada_release_scenario": ActionSpec(
+        type="verkada_release_scenario",
+        label="Verkada: Release Access scenario",
+        description=(
+            "Deactivate a previously-activated Access scenario. Pair "
+            "with the activate action when the all-clear is conditional "
+            "(e.g. release on a follow-up Gemini analysis)."
+        ),
+        schema=VERKADA_RELEASE_SCENARIO_SCHEMA,
+        output_sample=VERKADA_RELEASE_SCENARIO_OUTPUT,
+        run=run_verkada_release_scenario,
+        default_step_name="release_scenario",
     ),
     # ---- Generic / building-block actions ----
     "verkada_api_call": ActionSpec(

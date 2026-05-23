@@ -272,3 +272,33 @@ class VerkadaClient:
                 f"unlock_door failed: status={result['status_code']} body={result['body']!r}"
             )
         return result
+
+    async def activate_scenario(self, scenario_id: str) -> dict[str, Any]:
+        """Activate an Access scenario by id.
+
+        Endpoint shape mirrors door admin_unlock: singular noun + verb,
+        scenario_id in the request body. The Verkada docs page is
+        ``postaccessscenarioactivateviewv1``; if the live path differs
+        we'll see it in the error and adjust.
+        """
+        result = await self._post(
+            "/access/v1/scenario/activate", {"scenario_id": scenario_id}
+        )
+        if result["status_code"] >= 400:
+            raise VerkadaApiError(
+                f"activate_scenario failed: status={result['status_code']} "
+                f"body={result['body']!r}"
+            )
+        return result
+
+    async def release_scenario(self, scenario_id: str) -> dict[str, Any]:
+        """Release (deactivate) a previously activated Access scenario."""
+        result = await self._post(
+            "/access/v1/scenario/release", {"scenario_id": scenario_id}
+        )
+        if result["status_code"] >= 400:
+            raise VerkadaApiError(
+                f"release_scenario failed: status={result['status_code']} "
+                f"body={result['body']!r}"
+            )
+        return result
