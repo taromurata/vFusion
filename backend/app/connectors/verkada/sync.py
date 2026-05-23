@@ -34,8 +34,7 @@ def _auth_hint(operation: str, permission: str) -> str:
     and a key missing a scope, so we surface both possibilities."""
     return (
         f"Verkada rejected the API key (HTTP 401). To {operation}, the key needs "
-        f'**Read** on "{permission}" in Verkada Command. Check '
-        "Command → Admin → API & Integrations → API Keys → Permissions."
+        f'**Read** on "{permission}" in Verkada Command.'
     )
 
 
@@ -129,7 +128,7 @@ async def sync_doors_for_connection(connection_id) -> dict[str, Any]:
         except VerkadaApiError as e:
             logger.warning("door sync failed for %s: %s", conn.id, e)
             if e.status_code == 401:
-                return {"error": _auth_hint("list doors", "Access Control")}
+                return {"error": _auth_hint("list doors", "Door Access Management")}
             return {"error": str(e)}
 
         await session.execute(
