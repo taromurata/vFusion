@@ -305,6 +305,12 @@ The result lands in Verkada Command as a Helix event you can search and filter:
 
 ![Helix event — OCR](docs/images/helix-command-ocr.png)
 
+## Help expand the taxonomy
+
+vFusion classifies inbound Verkada webhooks into families (camera / access / lpr / sensor / intercom / alarm / credential) using a built-in taxonomy. New webhook types ship from Verkada from time to time and won't be recognized until the table is updated.
+
+The dashboard has an **Unrecognized events** page (`/unrecognized`) that groups webhooks vFusion couldn't classify. If you see entries there, please [open an issue](https://github.com/PacketTrace/vFusion/issues/new) with the `webhook_type` and `notification_type` values (and a sample payload if you can spare one) and the taxonomy will be expanded to cover them.
+
 ## Author
 
 Built by **Casey Keller** ([GitHub](https://github.com/PacketTrace) · [LinkedIn](https://www.linkedin.com/in/casey-keller-b00246b6/)) — a Verkada SE. vFusion is a personal project and is not an official Verkada product.
