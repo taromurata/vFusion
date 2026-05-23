@@ -256,7 +256,13 @@ function VerkadaRow({
     onSuccess: (d) => {
       qc.invalidateQueries({ queryKey: ["connections"] });
       qc.invalidateQueries({ queryKey: ["verkada-doors"] });
-      setSyncStatus({ kind: "ok", msg: okMsg("Doors", d.count) });
+      setSyncStatus({
+        kind: "ok",
+        msg:
+          `Doors: ${d.count} synced. Heads-up: each door also needs ` +
+          '"Door Management via API" enabled in its Verkada Command door ' +
+          "settings to be unlockable via API.",
+      });
     },
     onError: (e: Error) =>
       setSyncStatus({ kind: "err", msg: errMsg("Doors", e) }),
@@ -382,7 +388,7 @@ function VerkadaRow({
         </div>
         {syncStatus && (
           <div
-            className={`text-[11px] mt-1.5 text-right break-words ${
+            className={`text-[11px] mt-1.5 text-left break-words ${
               syncStatus.kind === "err"
                 ? "text-rose-300"
                 : "text-emerald-300"
@@ -394,7 +400,7 @@ function VerkadaRow({
           </div>
         )}
         {streamingResult && (
-          <div className="text-[11px] mt-1.5 text-right break-words space-y-0.5">
+          <div className="text-[11px] mt-1.5 text-left break-words space-y-0.5">
             <div
               className={
                 streamingResult.tier === "None"
