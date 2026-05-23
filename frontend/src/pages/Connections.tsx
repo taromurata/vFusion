@@ -250,6 +250,14 @@ function VerkadaRow({
     onError: (e: Error) =>
       setSyncStatus({ kind: "err", msg: errMsg("Cameras", e) }),
   });
+  // Reminder appended to every sync-doors result (success or failure)
+  // because the per-door "Door Management via API" toggle is a separate
+  // gotcha from listing the doors — the operator hits the first issue
+  // they encounter and forgets the second otherwise.
+  const DOOR_API_REMINDER =
+    ' Heads-up: each door also needs "Door Management via API" enabled ' +
+    "in its Verkada Command door settings to be unlockable via API.";
+
   const syncDoors = useMutation({
     mutationFn: () => apiPost<{ count: number }>(`/api/connections/${c.id}/sync-doors`, {}),
     onMutate: startSync,
@@ -258,14 +266,14 @@ function VerkadaRow({
       qc.invalidateQueries({ queryKey: ["verkada-doors"] });
       setSyncStatus({
         kind: "ok",
-        msg:
-          `Doors: ${d.count} synced. Heads-up: each door also needs ` +
-          '"Door Management via API" enabled in its Verkada Command door ' +
-          "settings to be unlockable via API.",
+        msg: `${okMsg("Doors", d.count)}.${DOOR_API_REMINDER}`,
       });
     },
     onError: (e: Error) =>
-      setSyncStatus({ kind: "err", msg: errMsg("Doors", e) }),
+      setSyncStatus({
+        kind: "err",
+        msg: `${errMsg("Doors", e)}${DOOR_API_REMINDER}`,
+      }),
   });
   const syncHelix = useMutation({
     mutationFn: () => apiPost<{ count: number }>(`/api/connections/${c.id}/sync-helix`, {}),
