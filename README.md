@@ -367,6 +367,17 @@ Gemini is currently the only major LLM with a usable **video** analysis API — 
 </details>
 
 <details>
+<summary><strong>How accurate is the cost estimate?</strong></summary>
+
+Usually pretty close, but it's an **estimate** — not a Google invoice. vFusion captures the input/output token counts from each Gemini response and multiplies by the per-million-token rates in its built-in pricing table (refreshed daily, seeded from Google's published rates). That gets within a few percent of reality most of the time.
+
+What it can miss: cached-token tiers, region-specific pricing, model-specific quirks, anything Google changes between price-table refreshes. The Stats page always labels figures as `~$x.xx estimated — not a Google invoice` for that reason.
+
+**Set a budget alert in [Google AI Studio](https://aistudio.google.com/) regardless.** It's the only real safety net against a runaway flow (or a noisy webhook source firing the same expensive video-analysis step thousands of times) running up a bill you didn't see coming. Google's billing is the source of truth; vFusion's estimate is just the dashboard view.
+
+</details>
+
+<details>
 <summary><strong>Even though it's self-hosted, does my API key or data get shared anywhere?</strong></summary>
 
 No — vFusion has no telemetry, no analytics, and never phones home. Your stored API keys are Fernet-encrypted at rest in your local Postgres and only leave the host when one of your flows explicitly calls Verkada or Gemini.
