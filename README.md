@@ -275,6 +275,10 @@ frontend/       Vite + React + Tailwind
 
 ![Prompt templates](docs/images/templates.png)
 
+**Stats & cost** — webhook ingest counters (24h / 7d / 30d), webhooks by family, top event types, estimated Gemini spend, and real-time server load.
+
+![Stats and cost](docs/images/stats.png)
+
 ## From analysis to Verkada Helix
 
 Gemini's analysis doesn't just sit in the vFusion dashboard. The `verkada_helix_event` action posts it straight back into Verkada Command as a searchable Helix event — attached to the camera and timestamp.
