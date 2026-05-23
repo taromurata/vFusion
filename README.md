@@ -21,6 +21,18 @@ Self-hosted, Verkada-flavored workflow automation — a visual router for webhoo
 - 🌍 **Public URLs built-in** — two deploy modes: quick mode (free TryCloudflare URL, zero Cloudflare setup) and production (named tunnel on your own domain). URL auto-displayed in the UI banner
 - 🔐 **Secrets at rest** — Fernet encryption for stored API keys + signing secrets, HMAC webhook signature verification, sensitive headers redacted before persistence
 
+## Example use cases
+
+Three flows that take advantage of vFusion's core loop — webhook or schedule → Gemini → post the result back into Verkada — and what's possible when you pair that loop with Verkada Command's built-in Helix alert rules.
+
+**Animal detection with push alerts.** Catch motion events from a wildlife or outdoor camera, ask Gemini *"what animal is in this frame?"*, and write the answer to a Helix attribute named `Animal`. In Verkada Command, set a Helix alert rule: *notify when `Animal` contains "bear"* — bear walks past the camera, the rule fires, your phone buzzes. (Screenshot of this exact flow lives in the [From analysis to Verkada Helix](#from-analysis-to-verkada-helix) section.)
+
+**Hourly empty-shelf / clothing-rack check.** No webhook source here — use the **schedule** trigger instead. Every hour, pull a still frame from a retail camera and ask Gemini *"how full is the rack, 0–100?"*. Post the answer as Helix attribute `Stock Level`. A Helix alert rule on `Stock Level < 30` pings floor staff. Zero humans involved, runs as long as the lights are on.
+
+**POI-detected lockdown.** Verkada already detects people of interest; vFusion lets you do something about it automatically. Webhook fires on the POI event → optional condition node filters by watchlist name → `verkada_api_call` hits the door-lockdown endpoint from the auto-synced API catalog, locking a single door or a whole site.
+
+The same pattern generalises: any **"if X is detected in the frame or webhook, do Y in Verkada"** automation — POI → lockdown, license plate → access grant, sound classifier → alarm acknowledge, package detected → notify, weather visible in frame → adjust temperature setpoint. Verkada provides the eyes and the actions; vFusion is the routing in between.
+
 ## Before you deploy
 
 This tool can unlock doors, pull live and historical camera footage, post events into Verkada Helix, and call any Verkada API endpoint your key allows. Treat it like the production system it talks to:
@@ -243,22 +255,24 @@ Migrations run automatically on backend boot.
 
 | Service  | Host port | Container port | Notes |
 |----------|-----------|----------------|-------|
-| frontend | 15173 | 5173 | Vite dev server, React + React Flow (later phases) |
+| frontend | 15173 | 5173 | Vite dev server, React + React Flow |
 | backend  | 18080 | 8000 | FastAPI; runs `alembic upgrade head` on start |
-| worker   | — | — | arq worker; no-op job for now, will run flows in Phase 3 |
-| postgres | — | 5432 | `verkada` / `verkada` / `verkadaroute` — internal only |
+| worker   | — | — | arq worker — runs flow executions and scheduled triggers |
+| postgres | — | 5432 | DB name `verkadaroute` (internal — artifact of the project's earlier name; safe to ignore) |
 | redis    | — | 6379 | execution queue — internal only |
 
 ## Project layout
 
 ```
 backend/        FastAPI + SQLAlchemy + Alembic + arq
-  app/api/      route handlers
-  app/models/   ORM models
-  app/         (engine/, connectors/ — added in later phases)
-frontend/       Vite + React + Tailwind
-  src/pages/    one component per top-level route
-  src/components/  shared UI (JSON viewer, etc.)
+  app/api/         route handlers
+  app/models/      ORM models
+  app/engine/      action registry, condition operators, template resolver
+  app/connectors/  Verkada client + Gemini integration
+  app/worker.py    arq worker — flow execution + cron jobs
+frontend/       Vite + React + Tailwind + React Flow
+  src/pages/       one component per top-level route
+  src/components/  shared UI (JSON viewer, flow nodes, gates, etc.)
 ```
 
 ## Screenshots
