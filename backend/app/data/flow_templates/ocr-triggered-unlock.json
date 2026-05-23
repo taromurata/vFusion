@@ -1,0 +1,54 @@
+{
+  "id": "ocr-triggered-unlock",
+  "name": "OCR-triggered door unlock",
+  "category": "Access automation",
+  "description": "Read text, signage, or license plates in front of a camera with Gemini, and unlock a door when the OCR'd text contains a target string (e.g. a VIP code, vendor name, or license plate snippet). Edit the condition's target value and pick the door to unlock before enabling.",
+  "summary": "Motion webhook → Gemini OCR → condition → unlock door",
+  "default_name": "OCR-triggered door unlock",
+  "flow": {
+    "trigger_type": "verkada_webhook",
+    "trigger_config": {
+      "family": "camera",
+      "notification_type": "alert_rule_motion"
+    },
+    "nodes": [
+      {
+        "id": "ocr",
+        "name": "ocr",
+        "kind": "action",
+        "action_type": "gemini_analyze_still_image",
+        "config": {
+          "connection_id": null,
+          "gemini_connection_id": null,
+          "camera_id": "{{ trigger.data.camera_id }}",
+          "model": "gemini-2.5-flash",
+          "prompt": "What text, signage, or license plate is visible in this image? Respond with just the text exactly as it appears, or 'none' if no text is visible."
+        }
+      },
+      {
+        "id": "matches_target",
+        "name": "matches_target",
+        "kind": "condition",
+        "config": {
+          "left": "{{ steps.ocr.output.text }}",
+          "operator": "contains",
+          "right": ""
+        }
+      },
+      {
+        "id": "unlock",
+        "name": "unlock",
+        "kind": "action",
+        "action_type": "verkada_unlock_door",
+        "config": {
+          "connection_id": null,
+          "door_id": ""
+        }
+      }
+    ],
+    "edges": [
+      {"id": "e_ocr_cond", "source": "ocr", "target": "matches_target"},
+      {"id": "e_cond_unlock", "source": "matches_target", "target": "unlock", "branch": "true"}
+    ]
+  }
+}
