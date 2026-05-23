@@ -1,6 +1,15 @@
 # vFusion
 
-⚠️ **Beta — built by a Verkada SE, not an official Verkada product.** Expect breaking changes. This tool uses API keys with broad permissions and acts on real cameras, doors, and alarms. Review the code, run it on infrastructure you control, and don't point it at production orgs you can't afford to debug. No warranty; see [LICENSE](LICENSE).
+⚠️ **Beta — built by a Verkada SE, not an official Verkada product.** Expect breaking changes. No warranty; see [LICENSE](LICENSE).
+
+This tool can unlock doors, pull live and historical camera footage, post events into Verkada Helix, and call any Verkada API endpoint your key allows. Treat it like the production system it talks to:
+
+- **Scope your Verkada API key to least privilege.** Only grant permissions for actions your flows actually need — e.g. if you only want Gemini analytics, do **not** grant door control. The key is encrypted at rest, but a tighter scope is a smaller blast radius if a key leaks or a flow misfires.
+- **Never expose the dashboard or backend API to the public internet.** Neither has built-in auth — anyone who can reach `http://<host>:15173` or `:18080` has full admin (read all webhooks, rotate secrets, trigger actions). Bind to LAN/localhost and use **Tailscale** or a VPN for remote access. The only thing meant to face the internet is `POST /hooks/verkada`.
+- **Always set a webhook signing secret.** Without it, anyone who knows your public `/hooks/verkada` URL can forge events — which may trigger real actions (a door-unlock flow, a Helix post on the wrong camera).
+- **Cap your Gemini API spend.** Set a daily/monthly budget alert in [Google AI Studio](https://aistudio.google.com/) so a runaway flow (or a noisy webhook source) can't surprise you with a bill. vFusion's Stats page shows an *estimate* — Google's billing is the source of truth.
+- **Back up the `vfusion_secrets` docker volume.** It holds the Fernet master key that encrypts every stored credential. Losing it = losing all of them.
+- **Run on infrastructure you control.** Review the code first. Don't point this at production orgs you can't afford to debug.
 
 Ever wish you could fuse together custom Verkada API pipelines? Now it's possible by just using a UI and you don't have to type a single line of code. 
 
