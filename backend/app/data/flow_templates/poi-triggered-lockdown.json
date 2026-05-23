@@ -10,7 +10,7 @@
     "trigger_config": {
       "family": "camera",
       "notification_type": "person_of_interest",
-      "filters": []
+      "filters": {}
     },
     "nodes": [
       {

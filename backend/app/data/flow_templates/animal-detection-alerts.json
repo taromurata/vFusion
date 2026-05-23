@@ -10,9 +10,9 @@
     "trigger_config": {
       "family": "camera",
       "notification_type": "alert_rule_motion",
-      "filters": [
-        {"field": "objects", "value": "animal"}
-      ]
+      "filters": {
+        "objects": "animal"
+      }
     },
     "nodes": [
       {
@@ -52,7 +52,7 @@
           "connection_id": null,
           "camera_id": "{{ trigger.data.camera_id }}",
           "event_type_uid": null,
-          "attributes": {"Animal": "{{ steps.analyze.output.text }}"},
+          "attributes": {},
           "time_ms": "{{ trigger.data.created }}000"
         },
         "position": {"x": 220, "y": 460}
