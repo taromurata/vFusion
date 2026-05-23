@@ -16,7 +16,7 @@ from sqlalchemy import select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db import get_session
-from app.models import VerkadaCamera, VerkadaDoor
+from app.models import VerkadaCamera, VerkadaDoor, VerkadaScenario
 
 
 router = APIRouter(prefix="/api/verkada", tags=["verkada"])
@@ -107,4 +107,34 @@ async def list_known_doors(
             "last_seen": r.last_seen.isoformat() if r.last_seen else None,
         }
         for r in rows
+    ]
+
+
+@router.get("/scenarios")
+async def list_scenarios(
+    connection_id: UUID | None = Query(default=None),
+    session: AsyncSession = Depends(get_session),
+) -> list[dict[str, Any]]:
+    """Cached Access scenarios pulled via ``/access/v1/scenarios`` on sync.
+
+    Includes the full upstream ``raw`` payload so the activation action
+    (forthcoming) can read whatever fields Verkada surfaces — we don't
+    yet know the canonical activation body and want everything at hand.
+    """
+    q = select(VerkadaScenario).order_by(VerkadaScenario.name.asc().nullslast())
+    if connection_id is not None:
+        q = q.where(VerkadaScenario.connection_id == connection_id)
+    rows = (await session.execute(q)).scalars().all()
+    return [
+        {
+            "connection_id": str(s.connection_id),
+            "scenario_id": s.scenario_id,
+            "name": s.name,
+            "scenario_type": s.scenario_type,
+            "site_id": s.site_id,
+            "site_name": s.site_name,
+            "raw": s.raw,
+            "synced_at": s.synced_at.isoformat() if s.synced_at else None,
+        }
+        for s in rows
     ]

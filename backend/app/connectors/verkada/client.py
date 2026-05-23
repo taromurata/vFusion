@@ -133,6 +133,27 @@ class VerkadaClient:
             return data
         raise VerkadaApiError(f"unexpected list_doors response shape: {type(data).__name__}")
 
+    async def list_scenarios(self) -> list[dict[str, Any]]:
+        """Return the full list of Access scenarios for this org.
+
+        Endpoint: ``GET /access/v1/scenarios``. The endpoint docs list
+        ``scenario_ids``, ``site_ids``, ``types``, ``scenario_types`` as
+        optional query params — none of which we pass; we want every
+        scenario configured in Command. Response is expected to be a
+        wrapped list (``{"scenarios": [...]}``); we tolerate a bare list
+        too in case the shape ever changes.
+        """
+        data = await self._get("/access/v1/scenarios")
+        if isinstance(data, dict):
+            for key in ("scenarios", "items", "data"):
+                if isinstance(data.get(key), list):
+                    return data[key]
+        if isinstance(data, list):
+            return data
+        raise VerkadaApiError(
+            f"unexpected list_scenarios response shape: {type(data).__name__}"
+        )
+
     async def list_helix_event_types(self) -> list[dict[str, Any]]:
         """Return all Helix video-tagging event types defined in this org.
 

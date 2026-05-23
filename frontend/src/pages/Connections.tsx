@@ -93,6 +93,7 @@ export default function Connections() {
                   <th className="text-left px-3 py-2">Cameras</th>
                   <th className="text-left px-3 py-2">Doors</th>
                   <th className="text-left px-3 py-2">Helix events</th>
+                  <th className="text-left px-3 py-2">Scenarios</th>
                   <th className="px-3 py-2"></th>
                 </tr>
               </thead>
@@ -242,6 +243,14 @@ function VerkadaRow({
       qc.invalidateQueries({ queryKey: ["helix-event-types"] });
     },
   });
+  const syncScenarios = useMutation({
+    mutationFn: () =>
+      apiPost<{ count: number }>(`/api/connections/${c.id}/sync-scenarios`, {}),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["connections"] });
+      qc.invalidateQueries({ queryKey: ["verkada-scenarios"] });
+    },
+  });
   return (
     <tr className={!c.setup_complete ? "bg-amber-950/30" : ""}>
       <td className="px-3 py-2 font-medium text-slate-100">{c.name}</td>
@@ -254,6 +263,7 @@ function VerkadaRow({
       <CountCell n={c.camera_count} ts={c.cameras_last_synced_at} />
       <CountCell n={c.door_count} ts={c.doors_last_synced_at} />
       <CountCell n={c.helix_event_count} ts={c.helix_events_last_synced_at} />
+      <CountCell n={c.scenario_count} ts={c.scenarios_last_synced_at} />
       <td className="px-3 py-2 text-right whitespace-nowrap space-x-2">
         {c.setup_complete && (
           <>
@@ -274,6 +284,12 @@ function VerkadaRow({
               pending={syncHelix.isPending}
               onClick={() => syncHelix.mutate()}
               title="Pull Helix event types from /cameras/v1/video_tagging/event_type"
+            />
+            <SyncBtn
+              label="Sync scenarios"
+              pending={syncScenarios.isPending}
+              onClick={() => syncScenarios.mutate()}
+              title="Pull Access scenarios from /access/v1/scenarios"
             />
           </>
         )}

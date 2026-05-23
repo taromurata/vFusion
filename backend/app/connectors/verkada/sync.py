@@ -15,7 +15,13 @@ from sqlalchemy import delete, select
 from app.connectors.verkada.client import VerkadaApiError, VerkadaClient
 from app.crypto import decrypt_secret
 from app.db import SessionLocal
-from app.models import Connection, VerkadaCamera, VerkadaDoor, VerkadaHelixEventType
+from app.models import (
+    Connection,
+    VerkadaCamera,
+    VerkadaDoor,
+    VerkadaHelixEventType,
+    VerkadaScenario,
+)
 
 
 logger = logging.getLogger(__name__)
@@ -210,9 +216,86 @@ async def sync_helix_event_types_for_connection(connection_id) -> dict[str, Any]
         return {"count": len(event_types)}
 
 
+async def sync_scenarios_for_connection(connection_id) -> dict[str, Any]:
+    """Pull the Access scenario list for one connection and replace the
+    cache. Same wipe-and-insert + error shape as the camera / door syncs.
+
+    The exact field names inside each scenario payload aren't fully
+    pinned down yet (the Verkada docs are sparse on the response body),
+    so we try a couple of plausible keys for id / name / type / site
+    and always keep the full payload in ``raw`` for downstream actions.
+    """
+    async with SessionLocal() as session:
+        conn = await session.get(Connection, connection_id)
+        if conn is None:
+            return {"error": "connection not found"}
+        if conn.type != "verkada":
+            return {"error": f"connection type {conn.type!r} can't sync scenarios"}
+        try:
+            secret = decrypt_secret(conn.encrypted_secret)
+        except Exception as e:
+            return {"error": f"could not decrypt secret: {e}"}
+        api_key = secret.get("api_key")
+        if not api_key:
+            return {"error": "connection has no api_key — finish setup first"}
+        region = secret.get("region") or None
+
+        client = VerkadaClient(api_key=api_key, base_url=region)
+        try:
+            scenarios = await client.list_scenarios()
+        except VerkadaApiError as e:
+            logger.warning("scenario sync failed for %s: %s", conn.id, e)
+            return {"error": str(e)}
+
+        await session.execute(
+            delete(VerkadaScenario).where(VerkadaScenario.connection_id == conn.id)
+        )
+        for sc in scenarios:
+            if not isinstance(sc, dict):
+                continue
+            # Try a few likely key names — once we see live data we'll
+            # tighten this up. The unique identifier is mandatory; the
+            # rest are best-effort.
+            scenario_id = sc.get("scenario_id") or sc.get("id") or sc.get("uid")
+            if not isinstance(scenario_id, str) or not scenario_id:
+                continue
+            site = sc.get("site") if isinstance(sc.get("site"), dict) else None
+            site_id = (site or {}).get("site_id") or sc.get("site_id")
+            site_name = (site or {}).get("name") or sc.get("site_name")
+            session.add(
+                VerkadaScenario(
+                    connection_id=conn.id,
+                    scenario_id=scenario_id,
+                    name=sc.get("name") if isinstance(sc.get("name"), str) else None,
+                    scenario_type=(
+                        sc.get("scenario_type")
+                        or sc.get("type")
+                        if isinstance(sc.get("scenario_type") or sc.get("type"), str)
+                        else None
+                    ),
+                    site_id=site_id if isinstance(site_id, str) else None,
+                    site_name=site_name if isinstance(site_name, str) else None,
+                    raw=sc,
+                )
+            )
+
+        conn.scenarios_last_synced_at = datetime.now(timezone.utc)
+        await session.commit()
+        logger.info(
+            "synced %d scenarios for connection %s", len(scenarios), conn.id
+        )
+        return {"count": len(scenarios)}
+
+
 async def sync_all_connections() -> dict[str, Any]:
-    """Sync cameras + doors across every set-up Verkada connection. Used by cron."""
-    results: dict[str, Any] = {"cameras": {}, "doors": {}, "helix": {}}
+    """Sync cameras + doors + helix + scenarios across every set-up Verkada
+    connection. Used by cron."""
+    results: dict[str, Any] = {
+        "cameras": {},
+        "doors": {},
+        "helix": {},
+        "scenarios": {},
+    }
     async with SessionLocal() as session:
         conns = (
             await session.execute(
@@ -226,4 +309,5 @@ async def sync_all_connections() -> dict[str, Any]:
         results["cameras"][str(cid)] = await sync_cameras_for_connection(cid)
         results["doors"][str(cid)] = await sync_doors_for_connection(cid)
         results["helix"][str(cid)] = await sync_helix_event_types_for_connection(cid)
+        results["scenarios"][str(cid)] = await sync_scenarios_for_connection(cid)
     return results

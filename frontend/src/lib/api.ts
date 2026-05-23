@@ -182,6 +182,8 @@ export interface Connection {
   door_count: number;
   helix_events_last_synced_at: string | null;
   helix_event_count: number;
+  scenarios_last_synced_at: string | null;
+  scenario_count: number;
   created_at: string;
   updated_at: string;
 }

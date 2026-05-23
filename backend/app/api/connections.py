@@ -12,10 +12,17 @@ from app.connectors.verkada.sync import (
     sync_cameras_for_connection,
     sync_doors_for_connection,
     sync_helix_event_types_for_connection,
+    sync_scenarios_for_connection,
 )
 from app.crypto import encrypt_secret, decrypt_secret
 from app.db import get_session
-from app.models import Connection, VerkadaCamera, VerkadaDoor, VerkadaHelixEventType
+from app.models import (
+    Connection,
+    VerkadaCamera,
+    VerkadaDoor,
+    VerkadaHelixEventType,
+    VerkadaScenario,
+)
 from sqlalchemy import func
 
 
@@ -68,6 +75,8 @@ class ConnectionOut(BaseModel):
     door_count: int = 0
     helix_events_last_synced_at: datetime | None = None
     helix_event_count: int = 0
+    scenarios_last_synced_at: datetime | None = None
+    scenario_count: int = 0
     created_at: datetime
     updated_at: datetime
 
@@ -113,10 +122,18 @@ async def _build_out(session: AsyncSession, conn: Connection) -> ConnectionOut:
             .where(VerkadaHelixEventType.connection_id == conn.id)
         )
     ).scalar_one()
+    scenario_count = (
+        await session.execute(
+            select(func.count())
+            .select_from(VerkadaScenario)
+            .where(VerkadaScenario.connection_id == conn.id)
+        )
+    ).scalar_one()
     out = ConnectionOut.model_validate(conn)
     out.camera_count = cam_count
     out.door_count = door_count
     out.helix_event_count = helix_count
+    out.scenario_count = scenario_count
     return out
 
 
@@ -159,6 +176,21 @@ async def trigger_door_sync(
     if conn is None:
         raise HTTPException(status_code=404, detail="not found")
     result = await sync_doors_for_connection(conn.id)
+    if "error" in result:
+        raise HTTPException(status_code=400, detail=result["error"])
+    return result
+
+
+@router.post("/{conn_id}/sync-scenarios")
+async def trigger_scenario_sync(
+    conn_id: UUID,
+    session: AsyncSession = Depends(get_session),
+) -> dict[str, Any]:
+    """Run the Verkada Access scenario sync for this connection right now."""
+    conn = await session.get(Connection, conn_id)
+    if conn is None:
+        raise HTTPException(status_code=404, detail="not found")
+    result = await sync_scenarios_for_connection(conn.id)
     if "error" in result:
         raise HTTPException(status_code=400, detail=result["error"])
     return result

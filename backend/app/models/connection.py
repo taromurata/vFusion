@@ -37,6 +37,9 @@ class Connection(Base):
     helix_events_last_synced_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
     )
+    scenarios_last_synced_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
 
     def __repr__(self) -> str:
         # Never let encrypted_secret leak into a default repr that might end up

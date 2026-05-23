@@ -9,6 +9,7 @@ from app.models.verkada_api import VerkadaApiEndpoint, VerkadaApiSpec
 from app.models.verkada_camera import VerkadaCamera
 from app.models.verkada_door import VerkadaDoor
 from app.models.verkada_helix_event_type import VerkadaHelixEventType
+from app.models.verkada_scenario import VerkadaScenario
 from app.models.webhook_asset import WebhookAsset
 from app.models.webhook_event import WebhookEvent
 
@@ -25,6 +26,7 @@ __all__ = [
     "VerkadaCamera",
     "VerkadaDoor",
     "VerkadaHelixEventType",
+    "VerkadaScenario",
     "WebhookAsset",
     "WebhookEvent",
 ]
