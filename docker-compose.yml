@@ -4,11 +4,11 @@ services:
     environment:
       POSTGRES_USER: verkada
       POSTGRES_PASSWORD: verkada
-      POSTGRES_DB: verkadaroute
+      POSTGRES_DB: vfusion
     volumes:
       - postgres_data:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U verkada -d verkadaroute"]
+      test: ["CMD-SHELL", "pg_isready -U verkada -d vfusion"]
       interval: 3s
       timeout: 3s
       retries: 10
@@ -25,7 +25,7 @@ services:
     build:
       context: ./backend
     environment:
-      DATABASE_URL: postgresql+asyncpg://verkada:verkada@postgres:5432/verkadaroute
+      DATABASE_URL: postgresql+asyncpg://verkada:verkada@postgres:5432/vfusion
       REDIS_URL: redis://redis:6379/0
       SECRET_KEY: ${SECRET_KEY:-dev-secret-change-me}
       FERNET_KEY: ${FERNET_KEY:-}
@@ -52,7 +52,7 @@ services:
     build:
       context: ./backend
     environment:
-      DATABASE_URL: postgresql+asyncpg://verkada:verkada@postgres:5432/verkadaroute
+      DATABASE_URL: postgresql+asyncpg://verkada:verkada@postgres:5432/vfusion
       REDIS_URL: redis://redis:6379/0
       FERNET_KEY: ${FERNET_KEY:-}
     depends_on:

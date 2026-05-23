@@ -1,5 +1,9 @@
 .env
 .env.local
+# Personal deploy template — keeps an operator's 1Password / secrets-
+# manager vault paths out of the public repo. If you use deploy.sh,
+# keep your own .env.tpl on the host (untracked).
+.env.tpl
 __pycache__/
 *.pyc
 *.pyo

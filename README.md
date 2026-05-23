@@ -231,7 +231,7 @@ Be honest about the gaps so you don't deploy assuming things you shouldn't:
 There's no password-reset email or recovery flow by design — single-user, no email layer. To clear the password and re-trigger the first-run setup wizard, delete its row from `app_settings`:
 
 ```bash
-docker compose exec postgres psql -U verkada -d verkadaroute \
+docker compose exec postgres psql -U verkada -d vfusion \
   -c "DELETE FROM app_settings WHERE key='admin_password_hash';"
 ```
 
@@ -258,7 +258,7 @@ Migrations run automatically on backend boot.
 | frontend | 15173 | 5173 | Vite dev server, React + React Flow |
 | backend  | 18080 | 8000 | FastAPI; runs `alembic upgrade head` on start |
 | worker   | — | — | arq worker — runs flow executions and scheduled triggers |
-| postgres | — | 5432 | DB name `verkadaroute` (internal — artifact of the project's earlier name; safe to ignore) |
+| postgres | — | 5432 | DB `vfusion` — internal only |
 | redis    | — | 6379 | execution queue — internal only |
 
 ## Project layout

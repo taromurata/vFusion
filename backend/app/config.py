@@ -4,7 +4,7 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 
-    database_url: str = "postgresql+asyncpg://verkada:verkada@postgres:5432/verkadaroute"
+    database_url: str = "postgresql+asyncpg://verkada:verkada@postgres:5432/vfusion"
     redis_url: str = "redis://redis:6379/0"
     secret_key: str = "dev-secret-change-me"
     fernet_key: str = ""
