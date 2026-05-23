@@ -1,15 +1,6 @@
 # vFusion
 
-⚠️ **Beta — built by a Verkada SE, not an official Verkada product.** Expect breaking changes. No warranty; see [LICENSE](LICENSE).
-
-This tool can unlock doors, pull live and historical camera footage, post events into Verkada Helix, and call any Verkada API endpoint your key allows. Treat it like the production system it talks to:
-
-- **Scope your Verkada API key to least privilege.** Only grant permissions for actions your flows actually need — e.g. if you only want Gemini analytics, do **not** grant door control. The key is encrypted at rest, but a tighter scope is a smaller blast radius if a key leaks or a flow misfires.
-- **Never expose the dashboard or backend API to the public internet.** Neither has built-in auth — anyone who can reach `http://<host>:15173` or `:18080` has full admin (read all webhooks, rotate secrets, trigger actions). Bind to LAN/localhost and use **Tailscale** or a VPN for remote access. The only thing meant to face the internet is `POST /hooks/verkada`.
-- **Always set a webhook signing secret.** Without it, anyone who knows your public `/hooks/verkada` URL can forge events — which may trigger real actions (a door-unlock flow, a Helix post on the wrong camera).
-- **Cap your Gemini API spend.** Set a daily/monthly budget alert in [Google AI Studio](https://aistudio.google.com/) so a runaway flow (or a noisy webhook source) can't surprise you with a bill. vFusion's Stats page shows an *estimate* — Google's billing is the source of truth.
-- **Back up the `vfusion_secrets` docker volume.** It holds the Fernet master key that encrypts every stored credential. Losing it = losing all of them.
-- **Run on infrastructure you control.** Review the code first. Don't point this at production orgs you can't afford to debug.
+⚠️ **Beta — built by a Verkada SE, not an official Verkada product.** Expect breaking changes. No warranty; see [LICENSE](LICENSE). This tool can unlock doors and pull camera footage — read **[Before you deploy](#before-you-deploy)** first.
 
 Ever wish you could fuse together custom Verkada API pipelines? Now it's possible by just using a UI and you don't have to type a single line of code. 
 
@@ -29,6 +20,17 @@ Self-hosted, Verkada-flavored workflow automation — a visual router for webhoo
 - 📊 **Stats & cost** — ingest counters (24h / 7d / 30d), top event types with inbox drill-down, Gemini spend tracking per model, real-time server load (CPU / memory / disk)
 - 🌍 **Public URLs built-in** — two deploy modes: quick mode (free TryCloudflare URL, zero Cloudflare setup) and production (named tunnel on your own domain). URL auto-displayed in the UI banner
 - 🔐 **Secrets at rest** — Fernet encryption for stored API keys + signing secrets, HMAC webhook signature verification, sensitive headers redacted before persistence
+
+## Before you deploy
+
+This tool can unlock doors, pull live and historical camera footage, post events into Verkada Helix, and call any Verkada API endpoint your key allows. Treat it like the production system it talks to:
+
+- **Scope your Verkada API key to least privilege.** Only grant permissions for actions your flows actually need — e.g. if you only want Gemini analytics, do **not** grant door control. The key is encrypted at rest, but a tighter scope is a smaller blast radius if a key leaks or a flow misfires.
+- **Never expose the dashboard or backend API to the public internet.** Neither has built-in auth — anyone who can reach `http://<host>:15173` or `:18080` has full admin (read all webhooks, rotate secrets, trigger actions). Bind to LAN/localhost and use **Tailscale** or a VPN for remote access. The only thing meant to face the internet is `POST /hooks/verkada`.
+- **Always set a webhook signing secret.** Without it, anyone who knows your public `/hooks/verkada` URL can forge events — which may trigger real actions (a door-unlock flow, a Helix post on the wrong camera).
+- **Cap your Gemini API spend.** Set a daily/monthly budget alert in [Google AI Studio](https://aistudio.google.com/) so a runaway flow (or a noisy webhook source) can't surprise you with a bill. vFusion's Stats page shows an *estimate* — Google's billing is the source of truth.
+- **Back up the `vfusion_secrets` docker volume.** It holds the Fernet master key that encrypts every stored credential. Losing it = losing all of them.
+- **Run on infrastructure you control.** Review the code first. Don't point this at production orgs you can't afford to debug.
 
 ## Requirements
 
