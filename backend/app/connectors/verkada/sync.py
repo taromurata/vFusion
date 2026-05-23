@@ -27,6 +27,18 @@ from app.models import (
 logger = logging.getLogger(__name__)
 
 
+def _auth_hint(operation: str, permission: str) -> str:
+    """Friendly 401 message that tells the operator which Verkada API
+    permission their key needs to be granted. Same generic 401 body
+    ("Failed to authenticate request") comes back for both a bad key
+    and a key missing a scope, so we surface both possibilities."""
+    return (
+        f"Verkada rejected the API key (HTTP 401). To {operation}, the key needs "
+        f'**Read** on "{permission}" in Verkada Command. Check '
+        "Command → Admin → API & Integrations → API Keys → Permissions."
+    )
+
+
 async def sync_cameras_for_connection(connection_id) -> dict[str, Any]:
     """Pull the full camera list for one connection and replace the cache.
 
@@ -53,6 +65,8 @@ async def sync_cameras_for_connection(connection_id) -> dict[str, Any]:
             cameras = await client.list_cameras()
         except VerkadaApiError as e:
             logger.warning("camera sync failed for %s: %s", conn.id, e)
+            if e.status_code == 401:
+                return {"error": _auth_hint("list cameras", "Cameras")}
             return {"error": str(e)}
 
         # Replace strategy: wipe + insert. Avoids stale rows for deleted cameras.
@@ -114,6 +128,8 @@ async def sync_doors_for_connection(connection_id) -> dict[str, Any]:
             doors = await client.list_doors()
         except VerkadaApiError as e:
             logger.warning("door sync failed for %s: %s", conn.id, e)
+            if e.status_code == 401:
+                return {"error": _auth_hint("list doors", "Access Control")}
             return {"error": str(e)}
 
         await session.execute(
@@ -182,6 +198,8 @@ async def sync_helix_event_types_for_connection(connection_id) -> dict[str, Any]
             event_types = await client.list_helix_event_types()
         except VerkadaApiError as e:
             logger.warning("helix sync failed for %s: %s", conn.id, e)
+            if e.status_code == 401:
+                return {"error": _auth_hint("list Helix event types", "Helix")}
             return {"error": str(e)}
 
         await session.execute(
@@ -245,6 +263,13 @@ async def sync_scenarios_for_connection(connection_id) -> dict[str, Any]:
             scenarios = await client.list_scenarios()
         except VerkadaApiError as e:
             logger.warning("scenario sync failed for %s: %s", conn.id, e)
+            if e.status_code == 401:
+                return {
+                    "error": _auth_hint(
+                        "list Access scenarios",
+                        "Access Scenario Management (or Access Control)",
+                    )
+                }
             return {"error": str(e)}
 
         await session.execute(

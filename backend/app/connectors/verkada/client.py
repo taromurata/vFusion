@@ -15,7 +15,45 @@ DEFAULT_BASE_URL = "https://api.verkada.com"
 
 
 class VerkadaApiError(Exception):
-    pass
+    """Raised on non-2xx responses from Verkada. Carries the HTTP status
+    and the parsed body so callers can branch on auth/permission failures
+    without re-parsing the message string."""
+
+    def __init__(
+        self,
+        message: str,
+        *,
+        status_code: int | None = None,
+        body: Any = None,
+    ) -> None:
+        super().__init__(message)
+        self.status_code = status_code
+        self.body = body
+
+
+def _build_error(method: str, path: str, res: httpx.Response) -> VerkadaApiError:
+    """Translate a non-2xx Verkada response into a clean VerkadaApiError.
+
+    Pulls the ``message`` field out of the JSON body when present so the
+    surfaced string is the actual upstream reason rather than the raw
+    JSON dump.
+    """
+    body: Any
+    try:
+        body = res.json()
+    except ValueError:
+        body = res.text
+    detail: str | None = None
+    if isinstance(body, dict):
+        for key in ("message", "error", "detail"):
+            v = body.get(key)
+            if isinstance(v, str) and v.strip():
+                detail = v.strip()
+                break
+    if not detail:
+        detail = body if isinstance(body, str) else repr(body)
+    summary = f"{method} {path} → {res.status_code}: {detail}"
+    return VerkadaApiError(summary, status_code=res.status_code, body=body)
 
 
 class VerkadaClient:
@@ -35,9 +73,7 @@ class VerkadaClient:
                 headers={"x-api-key": self.api_key, "accept": "application/json"},
             )
         if res.status_code >= 400:
-            raise VerkadaApiError(
-                f"login failed: status={res.status_code} body={res.text!r}"
-            )
+            raise _build_error("POST", "/token", res)
         body = res.json()
         token = body.get("token")
         if not isinstance(token, str) or not token:
@@ -62,9 +98,7 @@ class VerkadaClient:
                 params=params,
             )
         if res.status_code >= 400:
-            raise VerkadaApiError(
-                f"GET {path} failed: status={res.status_code} body={res.text!r}"
-            )
+            raise _build_error("GET", path, res)
         try:
             return res.json()
         except ValueError:
