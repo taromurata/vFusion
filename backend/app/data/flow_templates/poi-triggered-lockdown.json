@@ -1,0 +1,31 @@
+{
+  "id": "poi-triggered-lockdown",
+  "name": "POI-triggered lockdown",
+  "category": "Access automation",
+  "description": "When a Verkada person-of-interest detection fires, automatically lock down a door or site via the API catalog. Edit the verkada_api_call step to pick which door-lockdown endpoint to hit.",
+  "summary": "POI webhook → verkada_api_call (door / site lockdown endpoint)",
+  "default_name": "POI-triggered lockdown",
+  "flow": {
+    "trigger_type": "verkada_webhook",
+    "trigger_config": {
+      "family": "camera",
+      "notification_type": "person_of_interest",
+      "filters": []
+    },
+    "nodes": [
+      {
+        "id": "lockdown",
+        "name": "lockdown",
+        "kind": "action",
+        "action_type": "verkada_api_call",
+        "config": {
+          "connection_id": null,
+          "endpoint_id": null,
+          "params": {}
+        },
+        "position": {"x": 220, "y": 0}
+      }
+    ],
+    "edges": []
+  }
+}

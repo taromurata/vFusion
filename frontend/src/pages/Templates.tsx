@@ -4,12 +4,16 @@ import {
   useQuery,
   useQueryClient,
 } from "@tanstack/react-query";
+import { useNavigate } from "react-router-dom";
 
 import {
   apiDelete,
   apiGet,
   apiPost,
   apiPut,
+  Flow,
+  FlowTemplateDetail,
+  FlowTemplateListItem,
   PromptTemplate,
 } from "../lib/api";
 
@@ -26,7 +30,176 @@ type EditingState =
   | null;
 
 
+type Tab = "flows" | "prompts";
+
+
 export default function Templates() {
+  const [tab, setTab] = useState<Tab>("flows");
+
+  return (
+    <div className="space-y-6">
+      <div>
+        <h1 className="text-2xl font-semibold text-white">Templates</h1>
+        <p className="text-slate-300 text-sm mt-1">
+          Starter flows you can use as-is, and saved prompts you reuse across
+          Gemini analyze actions.
+        </p>
+      </div>
+
+      <nav className="flex items-center gap-1 border-b border-white/10 -mb-2">
+        <TabButton active={tab === "flows"} onClick={() => setTab("flows")}>
+          Flow templates
+        </TabButton>
+        <TabButton active={tab === "prompts"} onClick={() => setTab("prompts")}>
+          Prompt templates
+        </TabButton>
+      </nav>
+
+      {tab === "flows" ? <FlowTemplatesPanel /> : <PromptTemplatesPanel />}
+    </div>
+  );
+}
+
+
+function TabButton({
+  active,
+  onClick,
+  children,
+}: {
+  active: boolean;
+  onClick: () => void;
+  children: React.ReactNode;
+}) {
+  return (
+    <button
+      onClick={onClick}
+      className={`px-3 py-2 text-sm rounded-t-md border-b-2 transition-colors ${
+        active
+          ? "border-sky-500 text-white"
+          : "border-transparent text-slate-400 hover:text-slate-200"
+      }`}
+    >
+      {children}
+    </button>
+  );
+}
+
+
+// ---------------------------------------------------------------------------
+// Flow templates panel — built-in starter flows
+// ---------------------------------------------------------------------------
+
+function FlowTemplatesPanel() {
+  const navigate = useNavigate();
+  const [busyId, setBusyId] = useState<string | null>(null);
+  const [err, setErr] = useState<string | null>(null);
+
+  const list = useQuery({
+    queryKey: ["flow-templates"],
+    queryFn: () => apiGet<FlowTemplateListItem[]>("/api/flow-templates"),
+  });
+
+  const useTemplate = async (id: string) => {
+    setBusyId(id);
+    setErr(null);
+    try {
+      const tpl = await apiGet<FlowTemplateDetail>(`/api/flow-templates/${id}`);
+      // Imported / template-applied flows start disabled so the user can
+      // wire up connections before the trigger goes live.
+      const created = await apiPost<Flow>("/api/flows", {
+        name: tpl.default_name || tpl.name,
+        enabled: false,
+        trigger_type: tpl.flow.trigger_type,
+        trigger_config: tpl.flow.trigger_config,
+        nodes: tpl.flow.nodes,
+        edges: tpl.flow.edges,
+      });
+      navigate(`/flows/${created.id}/edit`);
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : String(e));
+    } finally {
+      setBusyId(null);
+    }
+  };
+
+  if (list.isLoading) {
+    return <div className="text-sm text-slate-400">Loading…</div>;
+  }
+  if (!list.data || list.data.length === 0) {
+    return (
+      <div className="bg-white/5 backdrop-blur-sm border border-white/15 rounded-lg p-6 text-sm text-slate-400">
+        No flow templates available. Drop new JSON files into
+        <code className="font-mono mx-1 text-slate-300">backend/app/data/flow_templates/</code>
+        and reload.
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-4">
+      <p className="text-xs text-slate-500 leading-relaxed">
+        Each template creates a new flow pre-wired with the right trigger,
+        actions, and conditions. Connections (Verkada org, Gemini key, Helix
+        event type) start empty — pick them in the editor, then enable.
+      </p>
+      {err && (
+        <div className="text-sm text-rose-300 bg-rose-950/50 border border-rose-900 rounded px-3 py-2">
+          {err}
+        </div>
+      )}
+      <div className="grid gap-3 sm:grid-cols-2">
+        {list.data.map((tpl) => (
+          <div
+            key={tpl.id}
+            className="bg-white/5 backdrop-blur-sm border border-white/15 rounded-lg p-4 flex flex-col gap-3"
+          >
+            <div>
+              <div className="flex items-center gap-2 flex-wrap">
+                <div className="text-sm font-medium text-slate-100">
+                  {tpl.name}
+                </div>
+                {tpl.category && (
+                  <span className="text-[10px] uppercase tracking-wider px-1.5 py-0.5 rounded bg-sky-900/60 text-sky-200">
+                    {tpl.category}
+                  </span>
+                )}
+                <span className="text-[10px] uppercase tracking-wider px-1.5 py-0.5 rounded bg-slate-700/50 text-slate-300">
+                  {tpl.trigger_type === "schedule" ? "schedule" : "webhook"}
+                </span>
+              </div>
+              {tpl.description && (
+                <div className="text-[11px] text-slate-400 mt-1.5 leading-relaxed">
+                  {tpl.description}
+                </div>
+              )}
+              {tpl.summary && (
+                <div className="mt-2 text-[11px] font-mono text-slate-500 bg-slate-950/60 rounded px-2 py-1 border border-white/5">
+                  {tpl.summary}
+                </div>
+              )}
+            </div>
+            <div className="mt-auto">
+              <button
+                onClick={() => useTemplate(tpl.id)}
+                disabled={busyId !== null}
+                className="text-xs px-3 py-1.5 rounded bg-sky-700 hover:bg-sky-600 text-white disabled:opacity-50"
+              >
+                {busyId === tpl.id ? "Creating…" : "Use this template"}
+              </button>
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+
+// ---------------------------------------------------------------------------
+// Prompt templates panel — the original analytics-prompt library
+// ---------------------------------------------------------------------------
+
+function PromptTemplatesPanel() {
   const qc = useQueryClient();
   const [editing, setEditing] = useState<EditingState>(null);
 
@@ -47,13 +220,10 @@ export default function Templates() {
   return (
     <div className="space-y-6">
       <div className="flex items-start justify-between gap-4">
-        <div>
-          <h1 className="text-2xl font-semibold text-white">Prompt templates</h1>
-          <p className="text-slate-300 text-sm mt-1">
-            Save prompts you reuse across Gemini analyze actions. They show up
-            in the action editor's template dropdown alongside the built-ins.
-          </p>
-        </div>
+        <p className="text-xs text-slate-500 leading-relaxed">
+          Save prompts you reuse across Gemini analyze actions. They show up in
+          the action editor's template dropdown alongside the built-ins.
+        </p>
         <button
           onClick={() => setEditing({ kind: "new" })}
           className="text-sm px-3 py-1.5 rounded-md bg-sky-700 hover:bg-sky-600 text-white whitespace-nowrap"

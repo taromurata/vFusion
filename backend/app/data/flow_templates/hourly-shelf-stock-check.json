@@ -1,0 +1,48 @@
+{
+  "id": "hourly-shelf-stock-check",
+  "name": "Hourly shelf-stock check",
+  "category": "Scheduled",
+  "description": "No webhook source — run on a schedule. Every hour, pull a still frame from a retail camera, ask Gemini how full the shelf or rack is, and post the percentage to Helix so Verkada Command can alert floor staff when stock drops.",
+  "summary": "Hourly schedule → Gemini still-image analyze → Helix event",
+  "default_name": "Hourly shelf-stock check",
+  "flow": {
+    "trigger_type": "schedule",
+    "trigger_config": {
+      "kind": "interval",
+      "every_minutes": 60
+    },
+    "nodes": [
+      {
+        "id": "analyze",
+        "name": "analyze",
+        "kind": "action",
+        "action_type": "gemini_analyze_still_image",
+        "config": {
+          "connection_id": null,
+          "gemini_connection_id": null,
+          "camera_id": "",
+          "model": "gemini-2.5-flash",
+          "prompt": "Estimate how full the shelf or clothing rack is on a scale of 0-100, where 100 is fully stocked and 0 is empty. Respond with just the number."
+        },
+        "position": {"x": 220, "y": 0}
+      },
+      {
+        "id": "post_helix",
+        "name": "post_helix",
+        "kind": "action",
+        "action_type": "verkada_helix_event",
+        "config": {
+          "connection_id": null,
+          "camera_id": "",
+          "event_type_uid": null,
+          "attributes": {"Stock Level": "{{ steps.analyze.output.text }}"},
+          "time_ms": "{{ trigger.fired_at }}000"
+        },
+        "position": {"x": 220, "y": 240}
+      }
+    ],
+    "edges": [
+      {"id": "e_analyze_post", "source": "analyze", "target": "post_helix"}
+    ]
+  }
+}

@@ -1,0 +1,66 @@
+{
+  "id": "animal-detection-alerts",
+  "name": "Animal detection alerts",
+  "category": "AI analytics",
+  "description": "Catch motion events from a wildlife or outdoor camera, ask Gemini what animal is in the frame, and post the result to Helix so Verkada Command can alert when it sees a specific species (e.g. bear).",
+  "summary": "Webhook → Gemini analyze → condition on \"bear\" → Helix event",
+  "default_name": "Animal detection alerts",
+  "flow": {
+    "trigger_type": "verkada_webhook",
+    "trigger_config": {
+      "family": "camera",
+      "notification_type": "alert_rule_motion",
+      "filters": [
+        {"field": "objects", "value": "animal"}
+      ]
+    },
+    "nodes": [
+      {
+        "id": "analyze",
+        "name": "analyze",
+        "kind": "action",
+        "action_type": "gemini_analyze_camera",
+        "config": {
+          "connection_id": null,
+          "gemini_connection_id": null,
+          "camera_id": "{{ trigger.data.camera_id }}",
+          "start_epoch": "{{ trigger.data.created }}",
+          "duration_sec": "10",
+          "pre_roll_sec": "2",
+          "model": "gemini-2.5-flash",
+          "prompt": "What animal is in this video? Respond with just the species name (e.g. 'bear', 'deer', 'coyote'), or 'none' if no animal is clearly visible."
+        },
+        "position": {"x": 220, "y": 0}
+      },
+      {
+        "id": "is_bear",
+        "name": "is_bear",
+        "kind": "condition",
+        "config": {
+          "left": "{{ steps.analyze.output.text }}",
+          "operator": "contains",
+          "right": "bear"
+        },
+        "position": {"x": 220, "y": 220}
+      },
+      {
+        "id": "post_helix",
+        "name": "post_helix",
+        "kind": "action",
+        "action_type": "verkada_helix_event",
+        "config": {
+          "connection_id": null,
+          "camera_id": "{{ trigger.data.camera_id }}",
+          "event_type_uid": null,
+          "attributes": {"Animal": "{{ steps.analyze.output.text }}"},
+          "time_ms": "{{ trigger.data.created }}000"
+        },
+        "position": {"x": 220, "y": 460}
+      }
+    ],
+    "edges": [
+      {"id": "e_analyze_cond", "source": "analyze", "target": "is_bear"},
+      {"id": "e_cond_post", "source": "is_bear", "target": "post_helix", "branch": "true"}
+    ]
+  }
+}

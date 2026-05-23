@@ -186,6 +186,55 @@ export interface Connection {
   updated_at: string;
 }
 
+// ---- Flow templates (built-in starter flows) ----
+
+export interface FlowTemplateListItem {
+  id: string;
+  name: string;
+  category: string | null;
+  description: string | null;
+  summary: string | null;
+  trigger_type: string;
+  default_name: string;
+}
+
+export interface FlowTemplateNode {
+  id: string;
+  name: string;
+  kind: "action" | "condition";
+  action_type: string | null;
+  config: Record<string, unknown>;
+  position?: { x: number; y: number } | null;
+}
+
+export interface FlowTemplateEdge {
+  id: string;
+  source: string;
+  target: string;
+  branch?: "true" | "false" | null;
+}
+
+export interface FlowTemplateDetail extends FlowTemplateListItem {
+  flow: {
+    trigger_type: string;
+    trigger_config: Record<string, unknown>;
+    nodes: FlowTemplateNode[];
+    edges: FlowTemplateEdge[];
+  };
+}
+
+// ---- Flow export / import format ----
+
+export interface FlowExportFormat {
+  format: "vfusion-flow";
+  version: number;
+  name: string;
+  trigger_type: string;
+  trigger_config: Record<string, unknown>;
+  nodes: FlowTemplateNode[];
+  edges: FlowTemplateEdge[];
+}
+
 export interface PromptTemplate {
   id: string;
   name: string;

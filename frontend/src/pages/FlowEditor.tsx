@@ -21,6 +21,7 @@ import {
   apiPut,
   Flow,
   FlowEdge,
+  FlowExportFormat,
   FlowNode,
   WebhookEvent,
 } from "../lib/api";
@@ -455,6 +456,31 @@ function FlowEditorInner() {
     addEdge(c.source, c.target, branch);
   };
 
+  const handleExport = async () => {
+    // Only meaningful for a saved flow — there's no server-side flow row
+    // to read otherwise. The Save / Export buttons disable accordingly.
+    if (isNew || !flowId) return;
+    setErr(null);
+    try {
+      const data = await apiGet<FlowExportFormat>(`/api/flows/${flowId}/export`);
+      const blob = new Blob([JSON.stringify(data, null, 2)], {
+        type: "application/json",
+      });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      // Filename: <flow-name>.vfusion.json, sanitised for filesystems.
+      const slug = (name || "flow").replace(/[^a-z0-9\-_.]+/gi, "_") || "flow";
+      a.download = `${slug}.vfusion.json`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : String(e));
+    }
+  };
+
   const handleSave = () => {
     setErr(null);
     if (!name.trim()) {
@@ -592,6 +618,18 @@ function FlowEditorInner() {
             className="text-sm px-3 py-1.5 rounded-md bg-white/10 hover:bg-white/15 text-slate-100 border border-white/15 disabled:opacity-50"
           >
             {scheduleTestRun.isPending ? "Starting…" : "Test run"}
+          </button>
+          <button
+            onClick={handleExport}
+            disabled={isNew || save.isPending}
+            title={
+              isNew
+                ? "Save the flow first to export it"
+                : "Download this flow as JSON to share or import elsewhere"
+            }
+            className="text-sm px-3 py-1.5 rounded-md bg-white/10 hover:bg-white/15 text-slate-100 border border-white/15 disabled:opacity-50"
+          >
+            Export
           </button>
           <button
             onClick={handleSave}

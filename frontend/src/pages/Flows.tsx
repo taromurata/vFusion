@@ -1,14 +1,55 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
-import { useEffect } from "react";
+import { useEffect, useRef, useState } from "react";
 
-import { apiDelete, apiGet, apiPut, Flow } from "../lib/api";
+import { apiDelete, apiGet, apiPost, apiPut, Flow } from "../lib/api";
 
 
 export default function Flows() {
   const qc = useQueryClient();
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
+  const fileRef = useRef<HTMLInputElement | null>(null);
+  const [importError, setImportError] = useState<string | null>(null);
+
+  const importMut = useMutation({
+    mutationFn: async (file: File) => {
+      const text = await file.text();
+      let parsed: unknown;
+      try {
+        parsed = JSON.parse(text);
+      } catch {
+        throw new Error("That file isn't valid JSON.");
+      }
+      if (
+        !parsed ||
+        typeof parsed !== "object" ||
+        (parsed as { format?: unknown }).format !== "vfusion-flow"
+      ) {
+        throw new Error(
+          "Doesn't look like a vFusion flow export — expected a `format: \"vfusion-flow\"` field.",
+        );
+      }
+      return apiPost<Flow>("/api/flows/import", parsed);
+    },
+    onSuccess: (flow) => {
+      setImportError(null);
+      qc.invalidateQueries({ queryKey: ["flows"] });
+      navigate(`/flows/${flow.id}/edit`);
+    },
+    onError: (e: Error) => setImportError(e.message),
+  });
+
+  const handleImportClick = () => {
+    setImportError(null);
+    fileRef.current?.click();
+  };
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) importMut.mutate(file);
+    // Reset so picking the same file twice in a row still fires onChange.
+    e.target.value = "";
+  };
 
   // If we land here with ?from_event=<id> (e.g. from the inbox's "+ Create
   // flow"), bounce straight to the canvas editor with the same param so the
@@ -49,13 +90,36 @@ export default function Flows() {
             page.
           </p>
         </div>
-        <Link
-          to="/flows/new"
-          className="text-sm px-3 py-1.5 rounded-md bg-sky-700 hover:bg-sky-600 text-white"
-        >
-          + Create flow
-        </Link>
+        <div className="flex items-center gap-2 whitespace-nowrap">
+          <input
+            ref={fileRef}
+            type="file"
+            accept="application/json,.json"
+            onChange={handleFileChange}
+            className="hidden"
+          />
+          <button
+            onClick={handleImportClick}
+            disabled={importMut.isPending}
+            title="Import a flow from a .vfusion.json file"
+            className="text-sm px-3 py-1.5 rounded-md border border-white/15 text-slate-200 hover:bg-white/10 disabled:opacity-50"
+          >
+            {importMut.isPending ? "Importing…" : "Import"}
+          </button>
+          <Link
+            to="/flows/new"
+            className="text-sm px-3 py-1.5 rounded-md bg-sky-700 hover:bg-sky-600 text-white"
+          >
+            + Create flow
+          </Link>
+        </div>
       </div>
+
+      {importError && (
+        <div className="text-sm text-rose-300 bg-rose-950/50 border border-rose-900 rounded px-3 py-2">
+          {importError}
+        </div>
+      )}
 
       <div className="border border-slate-800 rounded-lg overflow-hidden bg-slate-900/50">
         {flows.isLoading ? (

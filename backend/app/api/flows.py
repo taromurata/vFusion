@@ -217,6 +217,86 @@ async def create_flow(
     return FlowOut.model_validate(flow)
 
 
+# ---------------------------------------------------------------------------
+# Export / import — share a flow between vFusion installs.
+#
+# Connection-style FKs (verkada / gemini connection IDs, helix event-type
+# UIDs, API-catalog endpoint UUIDs) are stripped on export because they're
+# meaningful only inside the deploy that authored them. The importer
+# re-picks those on first edit. Verkada-side identifiers (camera_id,
+# door_id) stay as-is so the importer can see the original intent and
+# either keep them or replace them.
+# ---------------------------------------------------------------------------
+
+_STRIPPED_CONFIG_KEYS = {
+    "connection_id",
+    "gemini_connection_id",
+    "event_type_uid",
+    "endpoint_id",
+}
+
+
+def _strip_for_export(node: dict[str, Any]) -> dict[str, Any]:
+    out = dict(node)
+    cfg = dict(out.get("config") or {})
+    for k in _STRIPPED_CONFIG_KEYS:
+        if k in cfg:
+            cfg[k] = None
+    out["config"] = cfg
+    return out
+
+
+class FlowExport(BaseModel):
+    """Portable representation of a flow. ``format`` + ``version``
+    identify the schema so a future change can be detected on import."""
+
+    format: Literal["vfusion-flow"] = "vfusion-flow"
+    version: int = 1
+    name: str
+    trigger_type: str
+    trigger_config: dict[str, Any]
+    nodes: list[FlowNode]
+    edges: list[FlowEdge]
+
+
+class FlowImport(BaseModel):
+    format: Literal["vfusion-flow"]
+    version: int = 1
+    # Optional override; if omitted we use the exported name + " (imported)".
+    name: str | None = None
+    trigger_type: str = "verkada_webhook"
+    trigger_config: dict[str, Any] = Field(default_factory=dict)
+    nodes: list[FlowNode] = Field(default_factory=list)
+    edges: list[FlowEdge] = Field(default_factory=list)
+
+
+@router.post("/import", response_model=FlowOut)
+async def import_flow(
+    payload: FlowImport, session: AsyncSession = Depends(get_session)
+) -> FlowOut:
+    """Create a new flow from an exported JSON. Imported flows are
+    disabled by default — the user reviews + picks their connections
+    before flipping the switch."""
+    if payload.version != 1:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Unsupported flow export version: {payload.version!r}",
+        )
+    _validate_graph(payload.nodes, payload.edges)
+    flow = Flow(
+        name=payload.name or "Imported flow",
+        enabled=False,
+        trigger_type=payload.trigger_type,
+        trigger_config=payload.trigger_config,
+        nodes=[n.model_dump() for n in payload.nodes],
+        edges=[e.model_dump() for e in payload.edges],
+    )
+    session.add(flow)
+    await session.commit()
+    await session.refresh(flow)
+    return FlowOut.model_validate(flow)
+
+
 @router.get("/{flow_id}", response_model=FlowOut)
 async def get_flow(
     flow_id: UUID, session: AsyncSession = Depends(get_session)
@@ -225,6 +305,23 @@ async def get_flow(
     if flow is None:
         raise HTTPException(status_code=404, detail="not found")
     return FlowOut.model_validate(flow)
+
+
+@router.get("/{flow_id}/export", response_model=FlowExport)
+async def export_flow(
+    flow_id: UUID, session: AsyncSession = Depends(get_session)
+) -> FlowExport:
+    flow = await session.get(Flow, flow_id)
+    if flow is None:
+        raise HTTPException(status_code=404, detail="not found")
+    stripped = [_strip_for_export(n) for n in (flow.nodes or [])]
+    return FlowExport(
+        name=flow.name,
+        trigger_type=flow.trigger_type,
+        trigger_config=flow.trigger_config or {},
+        nodes=[FlowNode.model_validate(n) for n in stripped],
+        edges=[FlowEdge.model_validate(e) for e in (flow.edges or [])],
+    )
 
 
 @router.put("/{flow_id}", response_model=FlowOut)

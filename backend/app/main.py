@@ -9,6 +9,7 @@ from app.api import (
     byoa,
     config as config_api,
     connections,
+    flow_templates,
     flows,
     hooks,
     prompt_templates,
@@ -117,6 +118,7 @@ app.include_router(verkada_catalog.router)
 app.include_router(triggers.router)
 app.include_router(stats.router)
 app.include_router(prompt_templates.router)
+app.include_router(flow_templates.router)
 app.include_router(byoa.router)
 app.include_router(config_api.router)
 app.include_router(settings_api.router)
