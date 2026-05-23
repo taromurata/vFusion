@@ -1,12 +1,27 @@
 export const API_BASE =
   (import.meta.env.VITE_API_BASE as string | undefined) ?? "http://localhost:18080";
 
+// Custom event name AuthGate listens on. Any fetch that comes back 401
+// fires this so the gate can re-check status and flip to the login
+// screen — handles session expiry without each page needing its own
+// 401 handling.
+export const AUTH_LOST_EVENT = "vfusion-auth-lost";
+
 async function request<T>(method: string, path: string, body?: unknown): Promise<T> {
   const res = await fetch(`${API_BASE}${path}`, {
     method,
+    // include credentials so the session cookie travels with every
+    // request — backend's CORS allows credentials and the cookie is
+    // SameSite=Lax + HttpOnly.
+    credentials: "include",
     headers: body !== undefined ? { "Content-Type": "application/json" } : undefined,
     body: body !== undefined ? JSON.stringify(body) : undefined,
   });
+  if (res.status === 401 && !path.startsWith("/api/auth/")) {
+    // Don't dispatch when /api/auth/login itself 401s (wrong password) —
+    // that's an expected, transient state the login form handles.
+    window.dispatchEvent(new CustomEvent(AUTH_LOST_EVENT));
+  }
   if (!res.ok) {
     let detail = `${method} ${path} → ${res.status}`;
     try {
@@ -25,6 +40,15 @@ export const apiGet = <T>(p: string) => request<T>("GET", p);
 export const apiPost = <T>(p: string, body: unknown) => request<T>("POST", p, body);
 export const apiPut = <T>(p: string, body: unknown) => request<T>("PUT", p, body);
 export const apiDelete = (p: string) => request<void>("DELETE", p);
+
+// ---- Auth (single-user admin password) ----
+
+export interface AuthStatus {
+  password_set: boolean;
+  authenticated: boolean;
+  min_password_length: number;
+  max_password_length: number;
+}
 
 // ---- Public config (tunnel + onboarding state) ----
 

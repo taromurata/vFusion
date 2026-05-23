@@ -1,7 +1,10 @@
 import { useEffect } from "react";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { NavLink, Route, Routes, Navigate } from "react-router-dom";
 
+import AuthGate from "./components/AuthGate";
 import OnboardingGate from "./components/OnboardingGate";
+import { apiPost } from "./lib/api";
 import { useBrand } from "./lib/brand";
 import WebhookInbox from "./pages/WebhookInbox";
 import UnrecognizedEvents from "./pages/UnrecognizedEvents";
@@ -24,9 +27,30 @@ const navInactive = "text-slate-300";
 
 export default function App() {
   return (
-    <OnboardingGate>
-      <AppShell />
-    </OnboardingGate>
+    <AuthGate>
+      <OnboardingGate>
+        <AppShell />
+      </OnboardingGate>
+    </AuthGate>
+  );
+}
+
+
+function LogoutButton() {
+  const qc = useQueryClient();
+  const logout = useMutation({
+    mutationFn: () => apiPost("/api/auth/logout", {}),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["auth-status"] }),
+  });
+  return (
+    <button
+      onClick={() => logout.mutate()}
+      disabled={logout.isPending}
+      className="text-xs text-slate-400 hover:text-slate-200 px-2 py-1 rounded hover:bg-white/10 disabled:opacity-50"
+      title="Sign out"
+    >
+      {logout.isPending ? "Signing out…" : "Sign out"}
+    </button>
   );
 }
 
@@ -119,6 +143,9 @@ function AppShell() {
               Settings
             </NavLink>
           </nav>
+          <div className="ml-auto">
+            <LogoutButton />
+          </div>
         </div>
       </header>
       <main className="flex-1 min-h-0 w-full mx-auto px-6 py-6">

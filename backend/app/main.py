@@ -1,9 +1,11 @@
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 
 from app.api import (
+    auth as auth_api,
     byoa,
     config as config_api,
     connections,
@@ -19,6 +21,7 @@ from app.api import (
     verkada_resources,
     webhook_events,
 )
+from app.auth import SESSION_COOKIE, verify_session_token
 from app.config import settings
 from app.pricing.gemini import refresh_gemini_pricing
 from app.queue import make_pool
@@ -62,6 +65,47 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+
+# Routes that bypass the session-cookie gate. Webhooks are public by
+# design (signature-verified, not cookie-verified) and the auth + tiny
+# public-config + health endpoints must work before the operator has
+# anything resembling a session.
+_PUBLIC_PATH_PREFIXES: tuple[str, ...] = (
+    "/hooks",
+    "/api/auth",
+    "/api/config",
+    "/api/health",
+    # FastAPI's interactive docs — handy in dev, harmless in prod since
+    # they only describe the API surface, not its data.
+    "/docs",
+    "/redoc",
+    "/openapi.json",
+)
+
+
+@app.middleware("http")
+async def require_session(request: Request, call_next):
+    """Enforce the admin session cookie on every non-public route.
+
+    The frontend's ``AuthGate`` reads ``/api/auth/status`` first to
+    decide whether to show the setup wizard, the login form, or the app
+    proper. Any other request without a valid cookie gets a clean 401
+    so the frontend can react (e.g. on session expiry mid-session).
+    """
+    # CORS preflight requests carry no cookies — let them through so
+    # the actual request can be evaluated on its own merits.
+    if request.method == "OPTIONS":
+        return await call_next(request)
+    path = request.url.path
+    if any(path.startswith(p) for p in _PUBLIC_PATH_PREFIXES):
+        return await call_next(request)
+    token = request.cookies.get(SESSION_COOKIE)
+    if not verify_session_token(token):
+        return JSONResponse({"detail": "Not authenticated"}, status_code=401)
+    return await call_next(request)
+
+
+app.include_router(auth_api.router)
 app.include_router(hooks.router)
 app.include_router(webhook_events.router)
 app.include_router(connections.router)

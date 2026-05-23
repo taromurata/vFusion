@@ -26,7 +26,7 @@ Self-hosted, Verkada-flavored workflow automation — a visual router for webhoo
 This tool can unlock doors, pull live and historical camera footage, post events into Verkada Helix, and call any Verkada API endpoint your key allows. Treat it like the production system it talks to:
 
 - **Scope your Verkada API key to least privilege.** Only grant permissions for actions your flows actually need — e.g. if you only want Gemini analytics, do **not** grant door control. The key is encrypted at rest, but a tighter scope is a smaller blast radius if a key leaks or a flow misfires.
-- **Never expose the dashboard or backend API to the public internet.** Neither has built-in auth — anyone who can reach `http://<host>:15173` or `:18080` has full admin (read all webhooks, rotate secrets, trigger actions). Bind to LAN/localhost and use **Tailscale** or a VPN for remote access. The only thing meant to face the internet is `POST /hooks/verkada`.
+- **Don't expose the dashboard or backend API to the public internet.** A single-password login gates them (set during first-run setup), but it's basic — no MFA, no rate-limit, no IP allow-list. Treat it as one layer; bind these ports to LAN/localhost and use **Tailscale** or a VPN for remote access. The only thing meant to face the internet is `POST /hooks/verkada`.
 - **Always set a webhook signing secret.** Without it, anyone who knows your public `/hooks/verkada` URL can forge events — which may trigger real actions (a door-unlock flow, a Helix post on the wrong camera).
 - **Cap your Gemini API spend.** Set a daily/monthly budget alert in [Google AI Studio](https://aistudio.google.com/) so a runaway flow (or a noisy webhook source) can't surprise you with a bill. vFusion's Stats page shows an *estimate* — Google's billing is the source of truth.
 - **Back up the `vfusion_secrets` docker volume.** It holds the Fernet master key that encrypts every stored credential. Losing it = losing all of them.
@@ -105,7 +105,7 @@ First build takes ~2–3 min (image pulls + npm install + alembic migrations). S
 
 ### 2. Wire it into Verkada Command
 
-Open **http://localhost:15173**. On first run, the welcome modal walks you through it — both the **Generate signing secret** button and your public webhook URL live right in the modal. The signing secret is what lets vFusion verify each inbound webhook actually came from your org (both sides compute HMAC-SHA256 against the same string). **Strongly recommended even in quick mode** — without it, anyone who finds your trycloudflare URL could forge events.
+Open **http://localhost:15173**. On first run you'll be asked to set an **admin password** (single user, hashed with bcrypt — write it down, there's no email recovery). Then the welcome modal walks you through wiring up the webhook — both the **Generate signing secret** button and your public webhook URL live right in the modal. The signing secret is what lets vFusion verify each inbound webhook actually came from your org (both sides compute HMAC-SHA256 against the same string). **Strongly recommended even in quick mode** — without it, anyone who finds your trycloudflare URL could forge events.
 
 1. **In the vFusion welcome modal** → click **Generate signing secret** → click **Copy**.
 2. **Verkada Command** → **Admin** → **API & Integrations** → **Webhooks** → **Add**:
@@ -195,6 +195,7 @@ vFusion handles credentials with broad permissions on real physical-security inf
 
 ### What's protected
 
+- **Single-user admin password.** The dashboard and admin API are gated by a password the operator sets on first run. The password is **hashed** (not encrypted — hashing is one-way) with bcrypt (cost 12, per-password salt, SHA-256 pre-digest so long passphrases aren't truncated) and stored in `app_settings`. It never appears in the UI or any API response. Sessions are HMAC-signed cookies (HttpOnly, 7-day expiry) keyed off `SECRET_KEY` in `.env` — rotating `SECRET_KEY` invalidates every existing session at once.
 - **Secrets encrypted at rest.** Stored API keys and webhook signing secrets are encrypted with [Fernet (AES-128-CBC + HMAC-SHA-256)](https://cryptography.io/en/latest/fernet/) before hitting Postgres. The encryption key auto-generates on first backend boot and persists in the `vfusion_secrets` docker volume — never committed, never exposed via the UI. If the DB leaks without the volume, the credentials inside stay opaque. (You can override the auto-generated key by setting `FERNET_KEY` in `.env` — useful for 1Password / KMS-driven deploys where the secret lives elsewhere.)
 - **Webhook authenticity via HMAC.** Every inbound webhook with a configured signing secret runs through `HMAC-SHA-256(secret, body|timestamp)` per Verkada's documented scheme, with 60-second replay tolerance and constant-time comparison. Mismatches are flagged in the inbox as **✗ bad sig**. Without a configured secret, webhooks land as `unverified` — they ingest but you can't prove they came from Verkada.
 - **Public tunnel locked down by path + method.** In both quick and production modes, the only thing reachable through the public URL is `POST /hooks/verkada`. Quick mode enforces this with a bundled Caddy reverse proxy (Caddyfile in `caddy/`). Production mode enforces it with the Cloudflare-dashboard `hooks/*` path filter. The admin API, dashboard, and synthetic `/hooks/<slug>` paths return 404 to the public internet — and the 404 (vs 405) keeps the path itself opaque to scanners.
@@ -208,10 +209,21 @@ vFusion handles credentials with broad permissions on real physical-security inf
 
 Be honest about the gaps so you don't deploy assuming things you shouldn't:
 
-- **No auth on the admin API or dashboard.** Anyone who can reach `http://<host>:15173` (or the backend's `:18080/api/*`) has full admin access — read all webhooks, list/edit/trigger flows, rotate secrets. Mitigation today: don't bind these ports to a public interface. Use **Tailscale** (or any VPN) for remote admin access, or expose the dashboard only on your LAN.
+- **The admin login is single-user and basic.** One shared password, no MFA, no rate-limit on the login endpoint, no IP allow-list. Treat the password like a shared API key — long, unique, and not committed anywhere. Don't expose the dashboard or backend port to the public internet on the assumption that the login alone is enough; put it behind Tailscale or a reverse proxy.
 - **Trust between Verkada and vFusion is webhook-secret-only.** With a configured signing secret, every webhook is HMAC-verified. Without one, anyone who knows your public URL can fire fake webhooks at `/hooks/verkada`. **Always set the signing secret on production deploys.**
 - **The Fernet key is the master key.** Anyone with read access to **both** the `vfusion_secrets` volume (or `FERNET_KEY` env var, if you've overridden it) **and** the database can decrypt every stored credential. Treat the volume + env like any other production secret: restrict host-level access, back up the volume, and rotate if a host is compromised.
 - **No multi-user / RBAC.** vFusion is single-tenant: every user of the dashboard has the same (full-admin) view. If you want to share access with teammates, scope it via VPN access, not in-app permissions.
+
+### Recovering a lost admin password
+
+There's no password-reset email or recovery flow by design — single-user, no email layer. To clear the password and re-trigger the first-run setup wizard, delete its row from `app_settings`:
+
+```bash
+docker compose exec postgres psql -U verkada -d verkadaroute \
+  -c "DELETE FROM app_settings WHERE key='admin_password_hash';"
+```
+
+Refresh the dashboard and you'll be back at the setup screen. (The **Reset everything** danger-zone button in Settings also clears the password as a side effect, alongside everything else.)
 
 ### Threat model in one line
 
