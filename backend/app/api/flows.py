@@ -248,7 +248,7 @@ def _strip_for_export(node: dict[str, Any]) -> dict[str, Any]:
 
 async def _collect_helix_event_type_defs(
     nodes: list[dict[str, Any]], session: AsyncSession
-) -> list[HelixEventTypeDef]:
+) -> "list[HelixEventTypeDef]":
     """Look up every (event_type_uid, connection_id) pair referenced in
     the flow's nodes and return de-duped definitions.
 
@@ -281,7 +281,7 @@ async def _collect_helix_event_type_defs(
     if not pairs:
         return []
 
-    defs: list[HelixEventTypeDef] = []
+    defs: "list[HelixEventTypeDef]" = []
     for conn_str, uid in pairs:
         row = None
         if conn_str:
