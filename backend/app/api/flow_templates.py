@@ -31,7 +31,7 @@ from pathlib import Path
 from typing import Any
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Response
 from pydantic import BaseModel, Field
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -229,13 +229,19 @@ async def create_user_template(
     return _user_template_to_dict(row) | {"source": "user"}
 
 
-@router.delete("/{template_id}", status_code=204)
+@router.delete("/{template_id}")
 async def delete_user_template(
     template_id: str,
     session: AsyncSession = Depends(get_session),
-) -> None:
+) -> Response:
     """Delete a user-created template. Built-ins can't be deleted —
-    the ID format (slug vs UUID) decides which bucket we're in."""
+    the ID format (slug vs UUID) decides which bucket we're in.
+
+    Returns a bare 204 (No Content). We construct the Response manually
+    rather than declaring ``status_code=204`` on the decorator because
+    FastAPI's body-allowed assertion gets cranky when a 204 route also
+    has a return-type annotation — building the Response here side-steps
+    that check while keeping the same wire behavior."""
     if not _is_uuid(template_id):
         raise HTTPException(
             status_code=400,
@@ -246,6 +252,7 @@ async def delete_user_template(
         raise HTTPException(status_code=404, detail="not found")
     await session.delete(row)
     await session.commit()
+    return Response(status_code=204)
 
 
 # ---------------------------------------------------------------------------
