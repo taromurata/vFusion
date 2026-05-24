@@ -16,8 +16,8 @@
     },
     "helix_event_types": [
       {
-        "event_type_uid": "tpl:animals",
-        "name": "Animals",
+        "event_type_uid": "tpl:animal-watch",
+        "name": "🦌 Animal Watch",
         "event_schema": {
           "Animal": "string",
           "Behavior": "string"
@@ -61,7 +61,7 @@
         "config": {
           "connection_id": null,
           "camera_id": "{{ trigger.data.camera_id }}",
-          "event_type_uid": "tpl:animals",
+          "event_type_uid": "tpl:animal-watch",
           "attributes": {
             "Animal": "{{ steps.analyze.output.json.animal }}",
             "Behavior": "{{ steps.analyze.output.json.behavior }}"

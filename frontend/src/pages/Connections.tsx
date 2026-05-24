@@ -456,6 +456,7 @@ function SyncBtn({
 }) {
   return (
     <button
+      type="button"
       onClick={onClick}
       disabled={pending}
       title={title}
@@ -739,6 +740,14 @@ function SecretInput({
         onBlur={() => setRevealed(false)}
         className="flex-1 px-2 py-1.5 rounded bg-white/5 border border-white/15 focus:outline-none focus:border-sky-500 text-sm font-mono"
         autoComplete={isSecret ? "new-password" : "off"}
+        // Tell password managers not to treat this as a login form —
+        // the secret field flips between password / text on reveal, and
+        // 1Password / LastPass otherwise interpret a subsequent button
+        // click (e.g. "Sync cameras") as a credential save event and
+        // pop their "Save login?" prompt.
+        data-1p-ignore="true"
+        data-lpignore="true"
+        data-form-type="other"
         placeholder={isFinish && isSecret ? "leave blank to keep existing" : undefined}
       />
       {spec.generate && (
