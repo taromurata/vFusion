@@ -705,6 +705,7 @@ function FlowEditorInner() {
           )}
           {saveAsTemplateOpen && (
             <SaveAsTemplateModal
+              flowId={isNew ? null : flowId ?? null}
               defaultName={name}
               triggerType={triggerType}
               triggerConfig={
@@ -1225,6 +1226,7 @@ function computeLayout(
  *  user_flow_templates table. Connection IDs are stripped server-side
  *  before persisting, so the saved template is portable. */
 function SaveAsTemplateModal({
+  flowId,
   defaultName,
   triggerType,
   triggerConfig,
@@ -1232,6 +1234,10 @@ function SaveAsTemplateModal({
   edges,
   onClose,
 }: {
+  // When the modal is opened from a saved flow, we fetch its export
+  // body to harvest the embedded ``helix_event_types`` array. ``null``
+  // for a never-saved flow — that case has no helix bootstrap to do.
+  flowId: string | null;
   defaultName: string;
   triggerType: string;
   triggerConfig: Record<string, unknown>;
@@ -1247,8 +1253,23 @@ function SaveAsTemplateModal({
   const [err, setErr] = useState<string | null>(null);
 
   const save = useMutation({
-    mutationFn: () =>
-      apiPost(`/api/flow-templates`, {
+    mutationFn: async () => {
+      // Pick up the export so we can attach the embedded Helix type
+      // defs to the template. Best-effort — if the export call fails
+      // we still save the template, just without the bootstrap helpers
+      // for downstream recipients.
+      let helixTypes: FlowExportFormat["helix_event_types"] = [];
+      if (flowId) {
+        try {
+          const exported = await apiGet<FlowExportFormat>(
+            `/api/flows/${flowId}/export`,
+          );
+          helixTypes = exported.helix_event_types ?? [];
+        } catch {
+          /* non-fatal — proceed without the embedded defs */
+        }
+      }
+      return apiPost(`/api/flow-templates`, {
         name: name.trim(),
         category: category.trim() || null,
         description: description.trim() || null,
@@ -1259,8 +1280,10 @@ function SaveAsTemplateModal({
           trigger_config: triggerConfig,
           nodes,
           edges,
+          helix_event_types: helixTypes,
         },
-      }),
+      });
+    },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["flow-templates"] });
       onClose();

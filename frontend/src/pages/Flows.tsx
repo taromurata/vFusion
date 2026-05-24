@@ -2,7 +2,8 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { useEffect, useRef, useState } from "react";
 
-import { apiDelete, apiGet, apiPost, apiPut, Flow } from "../lib/api";
+import { apiDelete, apiGet, apiPost, apiPut, Flow, FlowExportFormat } from "../lib/api";
+import HelixBootstrapModal from "../components/HelixBootstrapModal";
 
 
 export default function Flows() {
@@ -11,29 +12,17 @@ export default function Flows() {
   const [searchParams] = useSearchParams();
   const fileRef = useRef<HTMLInputElement | null>(null);
   const [importError, setImportError] = useState<string | null>(null);
+  // When the picked file embeds Helix event-type defs we pause the
+  // import to let the operator bootstrap them on a target Verkada
+  // connection. Null = no modal, just import directly.
+  const [pendingImport, setPendingImport] = useState<FlowExportFormat | null>(null);
 
   const importMut = useMutation({
-    mutationFn: async (file: File) => {
-      const text = await file.text();
-      let parsed: unknown;
-      try {
-        parsed = JSON.parse(text);
-      } catch {
-        throw new Error("That file isn't valid JSON.");
-      }
-      if (
-        !parsed ||
-        typeof parsed !== "object" ||
-        (parsed as { format?: unknown }).format !== "vfusion-flow"
-      ) {
-        throw new Error(
-          "Doesn't look like a vFusion flow export — expected a `format: \"vfusion-flow\"` field.",
-        );
-      }
-      return apiPost<Flow>("/api/flows/import", parsed);
-    },
+    mutationFn: async (payload: FlowExportFormat) =>
+      apiPost<Flow>("/api/flows/import", payload),
     onSuccess: (flow) => {
       setImportError(null);
+      setPendingImport(null);
       qc.invalidateQueries({ queryKey: ["flows"] });
       navigate(`/flows/${flow.id}/edit`);
     },
@@ -44,11 +33,37 @@ export default function Flows() {
     setImportError(null);
     fileRef.current?.click();
   };
-  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
-    if (file) importMut.mutate(file);
-    // Reset so picking the same file twice in a row still fires onChange.
+    // Reset early so picking the same file twice in a row still fires onChange.
     e.target.value = "";
+    if (!file) return;
+
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(await file.text());
+    } catch {
+      setImportError("That file isn't valid JSON.");
+      return;
+    }
+    if (
+      !parsed ||
+      typeof parsed !== "object" ||
+      (parsed as { format?: unknown }).format !== "vfusion-flow"
+    ) {
+      setImportError(
+        "Doesn't look like a vFusion flow export — expected a `format: \"vfusion-flow\"` field.",
+      );
+      return;
+    }
+    const payload = parsed as FlowExportFormat;
+    // If the export embeds Helix type defs, route through the bootstrap
+    // modal first. Otherwise just import.
+    if ((payload.helix_event_types?.length ?? 0) > 0) {
+      setPendingImport(payload);
+    } else {
+      importMut.mutate(payload);
+    }
   };
 
   // If we land here with ?from_event=<id> (e.g. from the inbox's "+ Create
@@ -221,6 +236,16 @@ export default function Flows() {
           </table>
         )}
       </div>
+
+      {pendingImport && (
+        <HelixBootstrapModal
+          defs={pendingImport.helix_event_types ?? []}
+          onCancel={() => setPendingImport(null)}
+          onConfirm={(uidMap) =>
+            importMut.mutate({ ...pendingImport, helix_uid_map: uidMap })
+          }
+        />
+      )}
     </div>
   );
 }

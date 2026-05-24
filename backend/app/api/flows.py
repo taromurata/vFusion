@@ -16,7 +16,7 @@ from app.engine.conditions import OPERATORS as CONDITION_OPERATORS
 from app.engine.conditions import SAMPLE_OUTPUT as CONDITION_SAMPLE
 from app.engine.conditions import SCHEMA as CONDITION_SCHEMA
 from app.engine.conditions import evaluate as evaluate_condition
-from app.models import Connection, Flow, Run, WebhookEvent
+from app.models import Connection, Flow, Run, VerkadaHelixEventType, WebhookEvent
 
 
 router = APIRouter(prefix="/api/flows", tags=["flows"])
@@ -246,9 +246,97 @@ def _strip_for_export(node: dict[str, Any]) -> dict[str, Any]:
     return out
 
 
+async def _collect_helix_event_type_defs(
+    nodes: list[dict[str, Any]], session: AsyncSession
+) -> list[HelixEventTypeDef]:
+    """Look up every (event_type_uid, connection_id) pair referenced in
+    the flow's nodes and return de-duped definitions.
+
+    De-dupe by ``event_type_uid`` only — the same uid means the same
+    type even if two nodes happened to point at different connections.
+    We look up against the source flow's connection_ids so the name +
+    schema we embed reflect what the *author* actually used at export
+    time. When the source connection has been deleted (or the type was
+    never synced), we still emit the uid with empty name/schema so the
+    importer at least sees what was referenced.
+    """
+    pairs: list[tuple[str, str]] = []  # (connection_id, event_type_uid)
+    seen_uids: set[str] = set()
+    for n in nodes:
+        cfg = n.get("config") or {}
+        uid = cfg.get("event_type_uid")
+        conn = cfg.get("connection_id")
+        if not isinstance(uid, str) or not uid:
+            continue
+        if uid in seen_uids:
+            continue
+        seen_uids.add(uid)
+        if isinstance(conn, str) and conn:
+            pairs.append((conn, uid))
+        else:
+            # No connection on the node — emit a stub so the importer
+            # can still surface the uid.
+            pairs.append(("", uid))
+
+    if not pairs:
+        return []
+
+    defs: list[HelixEventTypeDef] = []
+    for conn_str, uid in pairs:
+        row = None
+        if conn_str:
+            try:
+                conn_uuid = UUID(conn_str)
+            except ValueError:
+                conn_uuid = None
+            if conn_uuid is not None:
+                row = (
+                    await session.execute(
+                        select(VerkadaHelixEventType).where(
+                            VerkadaHelixEventType.connection_id == conn_uuid,
+                            VerkadaHelixEventType.event_type_uid == uid,
+                        )
+                    )
+                ).scalar_one_or_none()
+        if row is None:
+            defs.append(HelixEventTypeDef(event_type_uid=uid))
+        else:
+            defs.append(
+                HelixEventTypeDef(
+                    event_type_uid=row.event_type_uid,
+                    name=row.name,
+                    event_schema=row.event_schema,
+                )
+            )
+    return defs
+
+
+class HelixEventTypeDef(BaseModel):
+    """Embedded Helix event-type definition for portability.
+
+    Travels alongside an exported flow whenever any node references a
+    custom Helix event type. The importer can offer to recreate these
+    on the destination's Verkada org so the recipient doesn't have to
+    hand-build event types before the flow will run. Per-deploy fields
+    (connection_id, org_id, internal UUID) are deliberately excluded —
+    only the type's intrinsic identity (uid + name + schema) crosses
+    deploy boundaries.
+    """
+
+    event_type_uid: str
+    name: str | None = None
+    event_schema: dict[str, Any] | None = None
+
+
 class FlowExport(BaseModel):
     """Portable representation of a flow. ``format`` + ``version``
-    identify the schema so a future change can be detected on import."""
+    identify the schema so a future change can be detected on import.
+
+    ``helix_event_types`` carries the definitions of any Helix event
+    types referenced by action configs. Optional + omitted when empty
+    so older importers (and exports of flows that don't touch Helix)
+    stay byte-identical to v1.
+    """
 
     format: Literal["vfusion-flow"] = "vfusion-flow"
     version: int = 1
@@ -257,6 +345,7 @@ class FlowExport(BaseModel):
     trigger_config: dict[str, Any]
     nodes: list[FlowNode]
     edges: list[FlowEdge]
+    helix_event_types: list[HelixEventTypeDef] = Field(default_factory=list)
 
 
 class FlowImport(BaseModel):
@@ -268,6 +357,207 @@ class FlowImport(BaseModel):
     trigger_config: dict[str, Any] = Field(default_factory=dict)
     nodes: list[FlowNode] = Field(default_factory=list)
     edges: list[FlowEdge] = Field(default_factory=list)
+    # Embedded Helix type defs the importer may offer to recreate; we
+    # accept them on the wire but the actual create-missing work runs
+    # through a separate endpoint so the operator can opt in / pick the
+    # target connection. Stored here purely for round-tripping.
+    helix_event_types: list[HelixEventTypeDef] = Field(default_factory=list)
+    # Optional uid rewrite map produced by /helix-bootstrap. Verkada
+    # assigns event_type_uids server-side, so a "bear" type recreated on
+    # a different deploy gets a different uid than the one referenced in
+    # the export. The frontend bootstrap step returns this map and we
+    # apply it to node configs during import.
+    helix_uid_map: dict[str, str] = Field(default_factory=dict)
+
+
+class HelixBootstrapRequest(BaseModel):
+    """Bootstrap Helix event types on a target Verkada connection before
+    importing or applying a flow that references them."""
+
+    target_connection_id: UUID
+    event_types: list[HelixEventTypeDef]
+    # When omitted, every missing type is created. Pass an explicit
+    # subset to let the operator skip certain types.
+    create_uids: list[str] | None = None
+
+
+class HelixBootstrapResultRow(BaseModel):
+    event_type_uid: str  # the uid from the export (may differ from new_uid)
+    new_uid: str | None  # the uid on the target connection (None if skipped)
+    name: str | None
+    status: Literal["existed", "created", "skipped", "failed"]
+    error: str | None = None
+
+
+class HelixBootstrapResponse(BaseModel):
+    uid_map: dict[str, str]  # old_uid -> new_uid for everything resolved
+    results: list[HelixBootstrapResultRow]
+
+
+def _rewrite_helix_uids_in_nodes(
+    nodes: list[dict[str, Any]], uid_map: dict[str, str]
+) -> list[dict[str, Any]]:
+    """Rewrite ``config.event_type_uid`` on every node per ``uid_map``.
+
+    No-op when the node doesn't reference Helix or when its uid isn't in
+    the map — those slots stay as-is and either fail at runtime (operator
+    didn't bootstrap) or already match (uid happened to be identical).
+    """
+    if not uid_map:
+        return nodes
+    out: list[dict[str, Any]] = []
+    for n in nodes:
+        cfg = dict(n.get("config") or {})
+        uid = cfg.get("event_type_uid")
+        if isinstance(uid, str) and uid in uid_map:
+            cfg["event_type_uid"] = uid_map[uid]
+        new_node = dict(n)
+        new_node["config"] = cfg
+        out.append(new_node)
+    return out
+
+
+@router.post("/helix-bootstrap", response_model=HelixBootstrapResponse)
+async def helix_bootstrap(
+    body: HelixBootstrapRequest, session: AsyncSession = Depends(get_session)
+) -> HelixBootstrapResponse:
+    """Pre-create Helix event types on a target Verkada connection so a
+    flow import / template apply can proceed without runtime failures.
+
+    Match strategy: look up by **name** on the target connection. Verkada
+    assigns event_type_uids server-side so the export's uid is just an
+    opaque label — the name is the only stable identifier across deploys.
+    For each embedded def:
+
+    - **existed** — a type with that name already lives on the target
+      connection. Map old_uid → existing_uid; no API call.
+    - **created** — name not found, ``create_uids`` allowed it. Create
+      via Verkada, map old_uid → newly-issued uid.
+    - **skipped** — name not found but the operator left the box
+      unchecked. No mapping; the runtime action will fail until the
+      operator fixes it.
+    - **failed** — Verkada rejected the create (duplicate name race,
+      bad schema, etc.). Reported back so the UI can surface it.
+
+    A single resync runs at the end so the local cache reflects whatever
+    we just created.
+    """
+    from app.api.connections import _verkada_client_for
+    from app.connectors.verkada.client import VerkadaApiError
+    from app.connectors.verkada.sync import sync_helix_event_types_for_connection
+
+    conn = await session.get(Connection, body.target_connection_id)
+    if conn is None:
+        raise HTTPException(status_code=404, detail="target connection not found")
+    if conn.type != "verkada":
+        raise HTTPException(
+            status_code=400,
+            detail=f"helix bootstrap only works on verkada connections (got {conn.type!r})",
+        )
+
+    # Existing types on the target conn, keyed by lowercased name for
+    # case-insensitive match. Names are user-supplied so casing drifts.
+    existing_rows = (
+        await session.execute(
+            select(VerkadaHelixEventType).where(
+                VerkadaHelixEventType.connection_id == body.target_connection_id
+            )
+        )
+    ).scalars().all()
+    by_name: dict[str, VerkadaHelixEventType] = {
+        (r.name or "").strip().lower(): r for r in existing_rows if r.name
+    }
+
+    create_uid_set = set(body.create_uids) if body.create_uids is not None else None
+    client = None
+    results: list[HelixBootstrapResultRow] = []
+    uid_map: dict[str, str] = {}
+    created_any = False
+
+    for d in body.event_types:
+        nm = (d.name or "").strip()
+        key = nm.lower()
+        existing = by_name.get(key) if key else None
+        if existing is not None:
+            uid_map[d.event_type_uid] = existing.event_type_uid
+            results.append(
+                HelixBootstrapResultRow(
+                    event_type_uid=d.event_type_uid,
+                    new_uid=existing.event_type_uid,
+                    name=existing.name,
+                    status="existed",
+                )
+            )
+            continue
+        # Missing. Either create or skip per the operator's opt-in set.
+        allowed = create_uid_set is None or d.event_type_uid in create_uid_set
+        if not allowed or not nm or d.event_schema is None:
+            reason = (
+                "not selected for creation"
+                if allowed is False
+                else "missing name or schema"
+            )
+            results.append(
+                HelixBootstrapResultRow(
+                    event_type_uid=d.event_type_uid,
+                    new_uid=None,
+                    name=d.name,
+                    status="skipped",
+                    error=reason if not allowed else "no name/schema embedded",
+                )
+            )
+            continue
+        # Lazy-init the API client so we don't decrypt secrets unless we
+        # actually have something to create.
+        if client is None:
+            client = await _verkada_client_for(conn)
+        try:
+            await client.create_helix_event_type(nm, d.event_schema)
+        except VerkadaApiError as e:
+            results.append(
+                HelixBootstrapResultRow(
+                    event_type_uid=d.event_type_uid,
+                    new_uid=None,
+                    name=d.name,
+                    status="failed",
+                    error=str(e),
+                )
+            )
+            continue
+        created_any = True
+        # We'll resolve the new uid after the resync below.
+        results.append(
+            HelixBootstrapResultRow(
+                event_type_uid=d.event_type_uid,
+                new_uid=None,
+                name=d.name,
+                status="created",
+            )
+        )
+
+    # Resync once so newly-created rows land locally with their assigned
+    # uids, then go back and fill in new_uid for everything we created.
+    if created_any:
+        await sync_helix_event_types_for_connection(conn.id)
+        fresh = (
+            await session.execute(
+                select(VerkadaHelixEventType).where(
+                    VerkadaHelixEventType.connection_id == body.target_connection_id
+                )
+            )
+        ).scalars().all()
+        fresh_by_name = {
+            (r.name or "").strip().lower(): r for r in fresh if r.name
+        }
+        for i, row in enumerate(results):
+            if row.status != "created":
+                continue
+            fresh_row = fresh_by_name.get((row.name or "").strip().lower())
+            if fresh_row is not None:
+                uid_map[row.event_type_uid] = fresh_row.event_type_uid
+                results[i] = row.model_copy(update={"new_uid": fresh_row.event_type_uid})
+
+    return HelixBootstrapResponse(uid_map=uid_map, results=results)
 
 
 @router.post("/import", response_model=FlowOut)
@@ -294,6 +584,10 @@ async def import_flow(
         )
     _validate_graph(payload.nodes, payload.edges)
     node_dicts = [n.model_dump() for n in payload.nodes]
+    # Apply the uid rewrite *before* connection rebind — the rebind only
+    # touches connection_id slots, but the uid map lives in node configs
+    # under event_type_uid, so the two are independent passes.
+    node_dicts = _rewrite_helix_uids_in_nodes(node_dicts, payload.helix_uid_map)
     node_dicts = await _rebind_connections(node_dicts, session)
     flow = Flow(
         name=payload.name or "Imported flow",
@@ -326,13 +620,20 @@ async def export_flow(
     flow = await session.get(Flow, flow_id)
     if flow is None:
         raise HTTPException(status_code=404, detail="not found")
-    stripped = [_strip_for_export(n) for n in (flow.nodes or [])]
+    raw_nodes = flow.nodes or []
+    # Collect Helix defs from the un-stripped nodes — we need the
+    # original connection_id to find the right row in
+    # verkada_helix_event_types. After that the connection_id gets
+    # zeroed out by _strip_for_export.
+    helix_defs = await _collect_helix_event_type_defs(raw_nodes, session)
+    stripped = [_strip_for_export(n) for n in raw_nodes]
     return FlowExport(
         name=flow.name,
         trigger_type=flow.trigger_type,
         trigger_config=flow.trigger_config or {},
         nodes=[FlowNode.model_validate(n) for n in stripped],
         edges=[FlowEdge.model_validate(e) for e in (flow.edges or [])],
+        helix_event_types=helix_defs,
     )
 
 

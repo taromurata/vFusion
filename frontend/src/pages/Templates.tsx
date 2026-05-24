@@ -11,9 +11,12 @@ import {
   apiGet,
   apiPost,
   apiPut,
+  FlowTemplateDetail,
   FlowTemplateListItem,
+  HelixEventTypeDef,
   PromptTemplate,
 } from "../lib/api";
+import HelixBootstrapModal from "../components/HelixBootstrapModal";
 
 
 interface BuiltinTemplate {
@@ -98,24 +101,55 @@ function FlowTemplatesPanel() {
     queryFn: () => apiGet<FlowTemplateListItem[]>("/api/flow-templates"),
   });
 
-  const useTemplate = async (id: string) => {
+  // When the picked template embeds Helix type defs, we hold its id +
+  // defs here and let the modal collect a uid_map before the actual
+  // /apply POST runs. ``null`` means no modal is open.
+  const [pendingApply, setPendingApply] = useState<
+    { id: string; defs: HelixEventTypeDef[] } | null
+  >(null);
+
+  const finalizeApply = async (id: string, uidMap: Record<string, string>) => {
     setBusyId(id);
     setErr(null);
     try {
-      // The apply endpoint strips positions + auto-rebinds obvious
-      // connection slots server-side, so the frontend stays a thin
-      // shell. Imported / template-applied flows start disabled — the
-      // user reviews + enables once they've wired everything up.
+      // apply strips positions + auto-rebinds obvious connection slots
+      // server-side, so the frontend stays a thin shell. Imported /
+      // template-applied flows start disabled — the user reviews +
+      // enables once they've wired everything up.
       const created = await apiPost<{ id: string }>(
         `/api/flow-templates/${id}/apply`,
-        {},
+        { helix_uid_map: uidMap },
       );
       navigate(`/flows/${created.id}/edit`);
     } catch (e) {
       setErr(e instanceof Error ? e.message : String(e));
     } finally {
       setBusyId(null);
+      setPendingApply(null);
     }
+  };
+
+  const useTemplate = async (id: string) => {
+    setErr(null);
+    // Peek at the template body first. If it embeds Helix event-type
+    // defs, route through the bootstrap modal so the operator can
+    // recreate any missing ones on their Verkada org before apply.
+    setBusyId(id);
+    try {
+      const detail = await apiGet<FlowTemplateDetail>(`/api/flow-templates/${id}`);
+      const defs = detail.flow.helix_event_types ?? [];
+      if (defs.length > 0) {
+        setBusyId(null);
+        setPendingApply({ id, defs });
+        return;
+      }
+    } catch (e) {
+      // Detail lookup failed — fall through to a plain apply so we
+      // don't block on a transient fetch error. The apply call will
+      // surface a clearer message if anything's actually broken.
+      console.warn("template detail fetch failed; applying without bootstrap", e);
+    }
+    await finalizeApply(id, {});
   };
 
   const deleteTemplate = useMutation({
@@ -209,6 +243,14 @@ function FlowTemplatesPanel() {
           </div>
         ))}
       </div>
+
+      {pendingApply && (
+        <HelixBootstrapModal
+          defs={pendingApply.defs}
+          onCancel={() => setPendingApply(null)}
+          onConfirm={(uidMap) => finalizeApply(pendingApply.id, uidMap)}
+        />
+      )}
     </div>
   );
 }

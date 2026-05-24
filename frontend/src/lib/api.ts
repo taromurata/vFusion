@@ -226,10 +226,20 @@ export interface FlowTemplateDetail extends FlowTemplateListItem {
     trigger_config: Record<string, unknown>;
     nodes: FlowTemplateNode[];
     edges: FlowTemplateEdge[];
+    // Optional embedded Helix event-type defs. When present, the
+    // template apply flow surfaces a bootstrap modal so the recipient
+    // can recreate any types they don't already have on their org.
+    helix_event_types?: HelixEventTypeDef[];
   };
 }
 
 // ---- Flow export / import format ----
+
+export interface HelixEventTypeDef {
+  event_type_uid: string;
+  name: string | null;
+  event_schema: Record<string, string> | null;
+}
 
 export interface FlowExportFormat {
   format: "vfusion-flow";
@@ -239,6 +249,31 @@ export interface FlowExportFormat {
   trigger_config: Record<string, unknown>;
   nodes: FlowTemplateNode[];
   edges: FlowTemplateEdge[];
+  // Embedded definitions of Helix event types referenced by the flow,
+  // so the importer can offer to recreate them on the target deploy.
+  // Optional — older exports won't have it.
+  helix_event_types?: HelixEventTypeDef[];
+  // Set by the importer just before POSTing to /api/flows/import. Maps
+  // each old event_type_uid (from the export) to whatever the target
+  // Verkada connection assigned (or already had under the same name).
+  // Never present on the wire from /export — it's a client-injected
+  // rewrite hint consumed by /import.
+  helix_uid_map?: Record<string, string>;
+}
+
+// ---- Helix bootstrap (used during flow import / template apply) ----
+
+export interface HelixBootstrapResultRow {
+  event_type_uid: string;
+  new_uid: string | null;
+  name: string | null;
+  status: "existed" | "created" | "skipped" | "failed";
+  error?: string | null;
+}
+
+export interface HelixBootstrapResponse {
+  uid_map: Record<string, string>;
+  results: HelixBootstrapResultRow[];
 }
 
 export interface PromptTemplate {

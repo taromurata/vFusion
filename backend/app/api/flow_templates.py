@@ -166,7 +166,11 @@ class UserTemplateCreate(BaseModel):
     summary: str | None = None
     default_name: str | None = None
     # The flow body — same shape as a saved Flow's
-    # ``{trigger_type, trigger_config, nodes, edges}``.
+    # ``{trigger_type, trigger_config, nodes, edges}``. May also carry an
+    # optional top-level ``helix_event_types`` array that lists every
+    # Helix event type the flow references, so a recipient applying the
+    # template can be offered "create these on your Verkada org" without
+    # having to hand-build them first.
     flow: dict[str, Any] = Field(default_factory=dict)
 
 
@@ -302,20 +306,39 @@ async def _rebind_connections(
     return out
 
 
+class ApplyTemplateBody(BaseModel):
+    """Optional body for template apply — currently just the Helix uid
+    rewrite map produced by ``POST /api/flows/helix-bootstrap``.
+
+    Defaults to empty so existing callers (and templates that don't use
+    Helix) keep working with a bare POST and no body.
+    """
+
+    helix_uid_map: dict[str, str] = Field(default_factory=dict)
+
+
 @router.post("/{template_id}/apply")
 async def apply_flow_template(
     template_id: str,
+    body: ApplyTemplateBody | None = None,
     session: AsyncSession = Depends(get_session),
 ) -> dict[str, Any]:
     """Create a new flow from a template.
 
-    Two pieces of housekeeping happen server-side so the frontend stays
-    a thin shell:
+    Server-side housekeeping so the frontend stays a thin shell:
       1. Node positions are stripped — the editor's auto-arrange lays
          out the template cleanly on first load.
       2. Connection slots get auto-rebound when the deploy has exactly
          one matching connection per type.
+      3. Any ``helix_uid_map`` from the bootstrap step rewrites
+         ``event_type_uid`` references onto whatever the target Verkada
+         connection assigned (or already had under the same name).
     """
+    # Local import — flows.py and flow_templates.py share helpers both
+    # directions, and this avoids a module-init cycle.
+    from app.api.flows import _rewrite_helix_uids_in_nodes
+
+    uid_map = (body.helix_uid_map if body is not None else None) or {}
     tpl = await _resolve_template(template_id, session)
     flow = tpl.get("flow") or {}
     nodes_in = flow.get("nodes") or []
@@ -323,6 +346,8 @@ async def apply_flow_template(
     nodes_stripped = [
         {**n, "position": None} for n in nodes_in if isinstance(n, dict)
     ]
+    # Helix uid rewrite first — the rebind step ignores event_type_uid.
+    nodes_stripped = _rewrite_helix_uids_in_nodes(nodes_stripped, uid_map)
     nodes_rebound = await _rebind_connections(nodes_stripped, session)
 
     new_flow = Flow(
