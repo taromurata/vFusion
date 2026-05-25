@@ -30,6 +30,7 @@ A few flows you can build with vFusion's core loop — **trigger → Gemini → 
 | **Animal detection alerts** | Motion webhook from a wildlife camera | Gemini identifies the animal, posts it to Helix as `Animal`. Command alerts when `Animal` contains "bear". |
 | **Hourly shelf-stock check** | Hourly schedule | Gemini scores shelf fullness 0–100, posts to Helix as `Stock Level`. Command alerts floor staff when below 30. |
 | **POI-triggered lockdown** | Verkada POI webhook | Optional watchlist filter, then `verkada_api_call` hits the door-lockdown endpoint from the API catalog. |
+| **Delivery driver auto-unlock** | Motion webhook on a loading-dock or front-door camera | Gemini OCRs the uniform / vehicle logo (FedEx, UPS, Amazon, DHL). When the carrier matches, the flow unlocks the door for ~30s and logs `Carrier`, time, and a still snapshot to Helix. No buzzer, no shared codes. |
 
 ## Before you deploy
 
