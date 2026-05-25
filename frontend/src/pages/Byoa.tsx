@@ -112,6 +112,16 @@ export default function Byoa() {
   interface BuiltinTemplate {
     name: string;
     value: string;
+    // Optional Helix pairing — see /api/prompt-templates/builtins.
+    // When present, picking the template auto-toggles "Post to Helix",
+    // selects the matching event type by name (if one exists on the
+    // current connection), and shows a banner explaining the pairing.
+    helix_event_type?: {
+      event_type_uid: string;
+      name: string;
+      event_schema: Record<string, string>;
+    };
+    helix_attribute_mapping?: Record<string, string>;
   }
   const builtinTemplates = useQuery({
     queryKey: ["prompt-templates-builtins"],
@@ -215,14 +225,37 @@ export default function Byoa() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [fromRunId]);
 
-  // Merge templates: user entries first, then built-ins.
-  const allTemplates = useMemo(
+  // Merge templates: user entries first, then built-ins. User templates
+  // never carry Helix pairing (no UI for setting it yet) so they coerce
+  // to the same BuiltinTemplate shape with the optional fields absent.
+  const allTemplates = useMemo<BuiltinTemplate[]>(
     () => [
       ...(userTemplates.data ?? []).map((t) => ({ name: t.name, value: t.value })),
       ...(builtinTemplates.data ?? []),
     ],
     [userTemplates.data, builtinTemplates.data],
   );
+
+  // The template the operator picked most recently. Held in local state
+  // so we can render the "Pairs with X" hint and react to changes in
+  // the picked Verkada connection (re-resolve the matching Helix type).
+  const [pickedTemplate, setPickedTemplate] = useState<BuiltinTemplate | null>(null);
+
+  // When a paired template is selected, auto-toggle "Post to Helix" and
+  // try to select the matching event type by name on the current
+  // Verkada connection. If the type doesn't exist on the org yet, the
+  // toggle still flips on so the UI surfaces the "Create" affordance.
+  useEffect(() => {
+    if (!pickedTemplate?.helix_event_type) return;
+    setPostToHelix(true);
+    if (!helixTypes.data) return;
+    const wantedName = pickedTemplate.helix_event_type.name.trim().toLowerCase();
+    const match = helixTypes.data.find(
+      (h) => (h.name ?? "").trim().toLowerCase() === wantedName,
+    );
+    if (match) setHelixEventTypeUid(match.event_type_uid);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pickedTemplate, helixTypes.data]);
 
   const [err, setErr] = useState<string | null>(null);
   const run = useMutation({
@@ -460,21 +493,44 @@ export default function Byoa() {
 
         <Field label="Prompt" required>
           {allTemplates.length > 0 && (
-            <select
-              value=""
-              onChange={(e) => {
-                const tpl = allTemplates.find((t) => t.name === e.target.value);
-                if (tpl) setPrompt(tpl.value);
-              }}
-              className="w-full px-2 py-1.5 rounded bg-white/5 border border-white/15 text-xs mb-2"
-            >
-              <option value="">— insert template (replaces text below) —</option>
-              {allTemplates.map((t) => (
-                <option key={t.name} value={t.name}>
-                  {t.name}
-                </option>
-              ))}
-            </select>
+            <>
+              <select
+                value=""
+                onChange={(e) => {
+                  const tpl = allTemplates.find((t) => t.name === e.target.value);
+                  if (!tpl) return;
+                  setPrompt(tpl.value);
+                  setPickedTemplate(tpl);
+                }}
+                className="w-full px-2 py-1.5 rounded bg-white/5 border border-white/15 text-xs mb-2"
+              >
+                <option value="">— insert template (replaces text below) —</option>
+                {allTemplates.map((t) => (
+                  <option key={t.name} value={t.name}>
+                    {t.name}
+                    {t.helix_event_type ? " · Helix-paired" : ""}
+                  </option>
+                ))}
+              </select>
+              {pickedTemplate?.helix_event_type && (
+                <div className="text-[11px] bg-emerald-950/30 border border-emerald-900/60 rounded px-2 py-1.5 mb-2">
+                  <div className="text-slate-300">
+                    <span className="text-emerald-300">Pairs with Helix:</span>{" "}
+                    <span className="text-slate-100 font-medium">
+                      {pickedTemplate.helix_event_type.name}
+                    </span>
+                  </div>
+                  <div className="text-[10px] text-slate-400 font-mono mt-0.5">
+                    {Object.entries(pickedTemplate.helix_event_type.event_schema)
+                      .map(([k, v]) => `${k}: ${v}`)
+                      .join(" · ")}
+                  </div>
+                  <div className="text-[10px] text-slate-500 mt-1">
+                    Post to Helix has been toggled on with this event type pre-selected. If it's not yet on your Verkada org, create it on the Helixr tab.
+                  </div>
+                </div>
+              )}
+            </>
           )}
           <textarea
             value={prompt}

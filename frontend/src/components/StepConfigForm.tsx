@@ -16,6 +16,7 @@ import {
 } from "../lib/api";
 import { useCameras } from "../lib/cameras";
 import EndpointPicker from "./EndpointPicker";
+import HelixEventTypeEditor from "./HelixEventTypeEditor";
 import VariablePicker from "./VariablePicker";
 
 interface PriorStep {
@@ -666,41 +667,79 @@ function HelixEventRefField({
     enabled: !!connId,
     staleTime: 30_000,
   });
+  // ``creating`` toggles the inline editor modal. On successful create
+  // we auto-select the new type so the operator doesn't have to find
+  // it in the dropdown manually. Same modal the Helixr page uses.
+  const [creating, setCreating] = useState(false);
   const current = (config[f.name] as string) ?? "";
   return (
     <>
-      <select
-        value={current}
-        onChange={(e) => {
-          const uid = e.target.value;
-          const next: Record<string, unknown> = { ...config, [f.name]: uid };
-          if (attrsField) {
-            const picked = (evtTypes.data ?? []).find(
-              (et) => et.event_type_uid === uid,
-            );
-            const schema = picked?.event_schema ?? {};
-            const seeded: Record<string, string> = {};
-            for (const k of Object.keys(schema)) seeded[k] = "";
-            next[attrsField] = seeded;
-          }
-          setAll(next);
-        }}
-        disabled={!connId}
-        className="w-full px-2 py-1.5 rounded bg-white/5 border border-white/15 text-sm"
-      >
-        <option value="">
-          {!connId
-            ? "— pick a Verkada connection first —"
-            : evtTypes.data && evtTypes.data.length === 0
-              ? "— none synced yet (click 'Sync helix' on the connection) —"
-              : "— pick an event type —"}
-        </option>
-        {(evtTypes.data ?? []).map((et) => (
-          <option key={et.id} value={et.event_type_uid}>
-            {et.name ?? "(unnamed)"}
+      <div className="flex gap-2 items-start">
+        <select
+          value={current}
+          onChange={(e) => {
+            const uid = e.target.value;
+            const next: Record<string, unknown> = { ...config, [f.name]: uid };
+            if (attrsField) {
+              const picked = (evtTypes.data ?? []).find(
+                (et) => et.event_type_uid === uid,
+              );
+              const schema = picked?.event_schema ?? {};
+              const seeded: Record<string, string> = {};
+              for (const k of Object.keys(schema)) seeded[k] = "";
+              next[attrsField] = seeded;
+            }
+            setAll(next);
+          }}
+          disabled={!connId}
+          className="flex-1 px-2 py-1.5 rounded bg-white/5 border border-white/15 text-sm"
+        >
+          <option value="">
+            {!connId
+              ? "— pick a Verkada connection first —"
+              : evtTypes.data && evtTypes.data.length === 0
+                ? "— none synced yet (click 'Sync helix' on the connection) —"
+                : "— pick an event type —"}
           </option>
-        ))}
-      </select>
+          {(evtTypes.data ?? []).map((et) => (
+            <option key={et.id} value={et.event_type_uid}>
+              {et.name ?? "(unnamed)"}
+            </option>
+          ))}
+        </select>
+        <button
+          type="button"
+          onClick={() => setCreating(true)}
+          disabled={!connId}
+          title="Create a new Helix event type on this connection's Verkada org"
+          className="shrink-0 text-xs px-3 py-1.5 rounded border border-emerald-700/60 bg-emerald-900/40 text-emerald-200 hover:bg-emerald-800/60 disabled:opacity-40 disabled:cursor-not-allowed"
+        >
+          + New type
+        </button>
+      </div>
+      {creating && connId && (
+        <HelixEventTypeEditor
+          connId={connId}
+          mode="create"
+          onClose={() => setCreating(false)}
+          onCreated={(created) => {
+            // Drop the new type's uid into this field + seed the
+            // attributes form below it with the new schema so the
+            // operator lands ready to fill in values.
+            const next: Record<string, unknown> = {
+              ...config,
+              [f.name]: created.event_type_uid,
+            };
+            if (attrsField) {
+              const seeded: Record<string, string> = {};
+              for (const k of Object.keys(created.event_schema ?? {}))
+                seeded[k] = "";
+              next[attrsField] = seeded;
+            }
+            setAll(next);
+          }}
+        />
+      )}
     </>
   );
 }
