@@ -108,16 +108,13 @@ export default function HelixBootstrapModal({
   const allExist =
     existing.isSuccess && defs.length > 0 && matches.every((m) => m !== null);
 
-  // Auto-skip when everything's already there — no point making the
-  // operator click "OK" on a modal that has nothing to do. Guard with
-  // a ref-like flag so we only fire once per resolution.
-  const [autoConfirmed, setAutoConfirmed] = useState(false);
-  useEffect(() => {
-    if (allExist && !autoConfirmed) {
-      setAutoConfirmed(true);
-      onConfirm(prebuiltUidMap);
-    }
-  }, [allExist, autoConfirmed, onConfirm, prebuiltUidMap]);
+  // Earlier this auto-confirmed when every referenced type already
+  // existed — the modal would silently dismiss as soon as the operator
+  // picked a connection. That created exactly the "wait, was I
+  // supposed to click something?" confusion the green check box
+  // implies. We now always require an explicit button click; the
+  // primary button just relabels to "Looks good - import" when there's
+  // nothing to create.
 
   const [bootstrapError, setBootstrapError] = useState<string | null>(null);
 
@@ -168,9 +165,11 @@ export default function HelixBootstrapModal({
           <p className="text-xs text-slate-400 mt-1">
             {probeLoading
               ? "Checking your Verkada org for existing types…"
-              : missingCount === 0 && existing.isSuccess
-                ? "Everything this flow needs is already on your Verkada org — proceeding."
-                : `This import uses ${defs.length === 1 ? "a Helix event type" : "Helix event types"} that may not exist on your Verkada org yet. Recommended: let us create the missing ${missingCount === 1 ? "one" : "ones"} now so the flow works on first run.`}
+              : !effectiveTarget
+                ? "Pick the Verkada connection where these Helix types should live, then review what gets created."
+                : allExist
+                  ? `Everything this flow needs is already on your Verkada org. Click "Looks good — import" to wire the flow up to the existing ${defs.length === 1 ? "type" : "types"}.`
+                  : `This import uses ${defs.length === 1 ? "a Helix event type" : "Helix event types"} that may not exist on your Verkada org yet. Recommended: let us create the missing ${missingCount === 1 ? "one" : "ones"} now so the flow works on first run.`}
           </p>
         </div>
 
@@ -275,21 +274,28 @@ export default function HelixBootstrapModal({
               type="button"
               onClick={() => {
                 setBootstrapError(null);
-                bootstrapMut.mutate();
+                if (allExist) {
+                  // Nothing to create — just hand the prebuilt uid_map
+                  // back to the caller. No API round-trip needed.
+                  onConfirm(prebuiltUidMap);
+                } else {
+                  bootstrapMut.mutate();
+                }
               }}
               disabled={
                 bootstrapMut.isPending ||
                 verkadaConns.length === 0 ||
-                !effectiveTarget ||
-                missingCount === 0
+                !effectiveTarget
               }
               className="text-sm px-3 py-1.5 rounded-md bg-sky-700 hover:bg-sky-600 text-white disabled:opacity-50"
             >
               {bootstrapMut.isPending
                 ? "Creating…"
-                : missingCount > 0
-                  ? `Create ${missingCount} & import`
-                  : "Nothing to create"}
+                : allExist
+                  ? "Looks good — import"
+                  : missingCount > 0
+                    ? `Create ${missingCount} & import`
+                    : "Import"}
             </button>
           </div>
         </div>
