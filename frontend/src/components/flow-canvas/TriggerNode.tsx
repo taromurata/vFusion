@@ -8,6 +8,15 @@ export interface TriggerNodeData extends Record<string, unknown> {
   trigger_type?: string;
   trigger_config: Flow["trigger_config"];
   onAddChild: () => void;
+  // Optional: when present, the card shows a Run button that fires
+  // the saved flow with a synthetic trigger blob and keeps the
+  // operator on the canvas to watch the run light up. Hidden for
+  // unsaved flows (no flow row to dispatch against yet).
+  onRunNow?: () => void;
+  // Whether a run launched from this card is currently being polled
+  // — used to dim the Run button while in flight.
+  runActive?: boolean;
+  runOverallStatus?: string | null;
 }
 
 
@@ -22,8 +31,10 @@ export default function TriggerNode({ data, selected }: NodeProps) {
 
   return (
     <div
-      className={`w-72 rounded-lg border-2 bg-slate-900 shadow-xl ${
-        selected ? "border-sky-500" : "border-slate-700"
+      className={`w-72 rounded-lg border-2 bg-slate-900 shadow-xl transition-shadow duration-200 ${
+        selected
+          ? "border-sky-400 ring-2 ring-sky-500/40 shadow-[0_0_24px_rgba(56,189,248,0.35)]"
+          : "border-slate-700"
       }`}
     >
       <div className="px-3 py-2 bg-sky-950/60 border-b border-slate-700 rounded-t-md flex items-center gap-2">
@@ -38,6 +49,23 @@ export default function TriggerNode({ data, selected }: NodeProps) {
             Trigger
           </div>
         </div>
+        {d.onRunNow && (
+          <button
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation();
+              d.onRunNow?.();
+            }}
+            disabled={!!d.runActive}
+            title="Fire this flow now with a synthetic trigger and watch the run light up the canvas"
+            className="nodrag shrink-0 text-[11px] font-semibold px-2 py-1 rounded bg-emerald-600 hover:bg-emerald-500 text-white disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-1"
+          >
+            <span aria-hidden>▶</span>
+            {d.runActive && (d.runOverallStatus === "running" || d.runOverallStatus === "pending")
+              ? "Running…"
+              : "Run"}
+          </button>
+        )}
       </div>
       {isSchedule ? (
         <ScheduleSummary cfg={cfg} />

@@ -23,6 +23,8 @@ import {
   FlowEdge,
   FlowExportFormat,
   FlowNode,
+  RunDetail,
+  RunStep,
   WebhookEvent,
 } from "../lib/api";
 import ActionNode from "../components/flow-canvas/ActionNode";
@@ -105,6 +107,33 @@ function FlowEditorInner() {
   const [sourceEventId, setSourceEventId] = useState<string | null>(null);
   const [testRunOpen, setTestRunOpen] = useState(false);
   const [saveAsTemplateOpen, setSaveAsTemplateOpen] = useState(false);
+
+  // When the operator hits "Run" on the trigger card we keep them on
+  // the canvas and poll the run so the nodes + edges can light up as
+  // each step fires. ``null`` means no active run is being tracked —
+  // nodes render in their resting state.
+  const [activeRunId, setActiveRunId] = useState<string | null>(null);
+  const activeRun = useQuery({
+    queryKey: ["run", activeRunId],
+    queryFn: () => apiGet<RunDetail>(`/api/runs/${activeRunId}`),
+    enabled: !!activeRunId,
+    // Aggressive polling while the run is still in motion; stops as
+    // soon as the run terminates so we don't hammer the backend after
+    // the fireworks are over.
+    refetchInterval: (q) => {
+      const s = (q.state.data as RunDetail | undefined)?.status;
+      return s === "pending" || s === "running" ? 500 : false;
+    },
+  });
+
+  // Map step.name -> current status, used by the canvas to paint
+  // nodes + edges. Defensive against missing data (run not loaded yet
+  // / step name mismatch) — anything without an entry renders normally.
+  const stepStatusByName: Record<string, RunStep["status"]> = {};
+  for (const s of activeRun.data?.steps ?? []) {
+    stepStatusByName[s.name] = s.status;
+  }
+  const runOverallStatus = activeRun.data?.status ?? null;
 
   const fromEventId = searchParams.get("from_event");
   useEffect(() => {
@@ -352,6 +381,32 @@ function FlowEditorInner() {
     if (dirty) setNodes(next);
   };
 
+  // Fire the saved flow as if a trigger had just landed. For schedule
+  // flows we synthesize the same blob the worker tick produces. Webhook
+  // flows open the existing TestRunModal so the operator can pick a
+  // sample event. Either way we capture the run_id and let the polling
+  // hook light up the canvas — no navigation away.
+  const handleRunFromCanvas = () => {
+    if (isNew || !flowId) return;
+    setErr(null);
+    if (triggerType === "schedule") {
+      apiPost<{ run_id: string }>(`/api/flows/${flowId}/test-run`, {
+        input: {
+          schedule: true,
+          fired_at: Math.floor(Date.now() / 1000),
+          kind: schedule.kind,
+          config: scheduleStateToConfig(schedule),
+        },
+      })
+        .then((res) => setActiveRunId(res.run_id))
+        .catch((e: Error) => setErr(e.message));
+    } else {
+      // Webhook → reuse the existing modal flow but capture the run_id
+      // into activeRunId so playback stays on-canvas.
+      setTestRunOpen(true);
+    }
+  };
+
   const rfNodes: Node[] = [
     {
       id: TRIGGER_ID,
@@ -364,6 +419,9 @@ function FlowEditorInner() {
             ? scheduleStateToConfig(schedule)
             : triggerStateToConfig(trigger),
         onAddChild: () => setPicker({ sourceId: TRIGGER_ID, branch: null }),
+        onRunNow: !isNew && flowId ? handleRunFromCanvas : undefined,
+        runActive: !!activeRunId,
+        runOverallStatus,
       },
       selected: selected.kind === "trigger",
       draggable: false,
@@ -371,6 +429,7 @@ function FlowEditorInner() {
     ...nodes.map<Node>((node) => {
       const pos = posFor(node);
       const outgoingCount = edges.filter((e) => e.source === node.id).length;
+      const runStatus = stepStatusByName[node.name];
       if (node.kind === "condition") {
         return {
           id: node.id,
@@ -382,6 +441,7 @@ function FlowEditorInner() {
             onRemove: () => removeNode(node.id),
             onAddBranch: (branch: "true" | "false") =>
               setPicker({ sourceId: node.id, branch }),
+            runStatus,
           },
           selected: selected.kind === "node" && selected.id === node.id,
           draggable: true,
@@ -398,6 +458,7 @@ function FlowEditorInner() {
           outgoingCount,
           onRemove: () => removeNode(node.id),
           onAddChild: () => setPicker({ sourceId: node.id, branch: null }),
+          runStatus,
         },
         selected: selected.kind === "node" && selected.id === node.id,
         draggable: true,
@@ -407,9 +468,28 @@ function FlowEditorInner() {
 
   const rfEdges: Edge[] = edges.map<Edge>((e) => {
     const sourceNode = nodes.find((n) => n.id === e.source);
+    const targetNode = nodes.find((n) => n.id === e.target);
     const isCondition = sourceNode?.kind === "condition";
     const branchColor =
       e.branch === "true" ? "#34d399" : e.branch === "false" ? "#fb7185" : "#475569";
+    // Run-state edge styling: when the target step is currently running,
+    // pull the edge forward with a brighter stroke + thicker line so the
+    // viewer's eye follows where the action is. Completed-to-completed
+    // edges get a faint emerald tint to show "path taken".
+    const tgtStatus = targetNode ? stepStatusByName[targetNode.name] : undefined;
+    const srcStatus = sourceNode ? stepStatusByName[sourceNode.name] : undefined;
+    let stroke = branchColor;
+    let strokeWidth = 1.5;
+    if (tgtStatus === "running") {
+      stroke = "#38bdf8"; // sky-400 — "live"
+      strokeWidth = 2.5;
+    } else if (
+      (srcStatus === "success" || srcStatus === undefined) &&
+      (tgtStatus === "success" || tgtStatus === "failed")
+    ) {
+      stroke = tgtStatus === "failed" ? "#fb7185" : "#34d399";
+      strokeWidth = 2;
+    }
     return {
       id: e.id,
       source: e.source,
@@ -428,22 +508,36 @@ function FlowEditorInner() {
         fontWeight: 600,
       },
       labelBgStyle: { fill: "#0f172a", fillOpacity: 0.9 },
-      style: { stroke: branchColor, strokeWidth: 1.5 },
+      style: { stroke, strokeWidth },
       selected: selected.kind === "edge" && selected.id === e.id,
     };
   });
 
   // Implicit trigger → root-node edges so the canvas reads top-down.
+  // These get the same run-state treatment as the explicit edges so a
+  // live run lights up the trigger → first step transition too.
   const triggerEdges: Edge[] = nodes
     .filter((n) => !edges.some((e) => e.target === n.id))
-    .map((n) => ({
-      id: `${TRIGGER_ID}-${n.id}`,
-      source: TRIGGER_ID,
-      target: n.id,
-      animated: true,
-      selectable: false,
-      style: { stroke: "#475569" },
-    }));
+    .map((n) => {
+      const tgtStatus = stepStatusByName[n.name];
+      let stroke = "#475569";
+      let strokeWidth = 1.5;
+      if (tgtStatus === "running") {
+        stroke = "#38bdf8";
+        strokeWidth = 2.5;
+      } else if (tgtStatus === "success" || tgtStatus === "failed") {
+        stroke = tgtStatus === "failed" ? "#fb7185" : "#34d399";
+        strokeWidth = 2;
+      }
+      return {
+        id: `${TRIGGER_ID}-${n.id}`,
+        source: TRIGGER_ID,
+        target: n.id,
+        animated: true,
+        selectable: false,
+        style: { stroke, strokeWidth },
+      };
+    });
 
   const handleConnect = (c: RFConnection) => {
     if (!c.source || !c.target) return;
@@ -589,6 +683,36 @@ function FlowEditorInner() {
               {err}
             </span>
           )}
+          {activeRunId && (
+            <div className="flex items-center gap-2 text-xs px-2 py-1 rounded border border-sky-700/60 bg-sky-950/50 text-sky-100">
+              <span
+                className={`inline-block w-2 h-2 rounded-full ${
+                  runOverallStatus === "running" || runOverallStatus === "pending"
+                    ? "bg-sky-400 animate-pulse"
+                    : runOverallStatus === "failed"
+                      ? "bg-rose-400"
+                      : "bg-emerald-400"
+                }`}
+              />
+              <span className="capitalize">
+                {runOverallStatus ?? "starting"}
+              </span>
+              <Link
+                to={`/runs?selected=${activeRunId}`}
+                className="text-sky-300 hover:underline"
+              >
+                view full
+              </Link>
+              <button
+                type="button"
+                onClick={() => setActiveRunId(null)}
+                title="Stop tracking this run on the canvas (the run itself keeps going on the server)"
+                className="text-slate-400 hover:text-slate-200"
+              >
+                ×
+              </button>
+            </div>
+          )}
           <button
             onClick={autoArrange}
             disabled={nodes.length === 0}
@@ -698,8 +822,12 @@ function FlowEditorInner() {
               defaultEventId={sourceEventId}
               onClose={() => setTestRunOpen(false)}
               onRun={(runId) => {
+                // Stay on the canvas — the polling hook will light up
+                // each node as the run progresses. A "View run details"
+                // banner appears so the operator can still jump to the
+                // Runs page if they want the full transcript.
                 setTestRunOpen(false);
-                navigate(`/runs?selected=${runId}`);
+                setActiveRunId(runId);
               }}
             />
           )}

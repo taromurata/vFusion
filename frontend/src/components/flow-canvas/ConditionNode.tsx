@@ -9,6 +9,9 @@ export interface ConditionNodeData extends Record<string, unknown> {
   canRemove: boolean;
   onRemove: () => void;
   onAddBranch: (branch: "true" | "false") => void;
+  // See ActionNodeData.runStatus — same semantics. ``skipped`` shows up
+  // a lot on conditions because only one branch fires per run.
+  runStatus?: "running" | "success" | "failed" | "skipped";
 }
 
 
@@ -23,9 +26,7 @@ export default function ConditionNode({ data, selected }: NodeProps) {
 
   return (
     <div
-      className={`w-72 rounded-lg border-2 bg-slate-900 shadow-xl ${
-        selected ? "border-amber-500" : "border-slate-700"
-      }`}
+      className={`w-72 rounded-lg border-2 bg-slate-900 shadow-xl transition-shadow duration-200 ${conditionRunStateClasses(d.runStatus, selected)}`}
     >
       <Handle type="target" position={Position.Top} className="!bg-slate-500 !w-2 !h-2" />
       <div className="px-3 py-2 bg-amber-950/60 border-b border-slate-700 rounded-t-md flex items-center gap-2">
@@ -73,6 +74,32 @@ export default function ConditionNode({ data, selected }: NodeProps) {
       </div>
     </div>
   );
+}
+
+
+/** Border + glow for a condition node based on tracked-run status.
+ *  Mirrors ActionNode.runStateClasses but keeps the amber selected
+ *  state so condition cards stay visually distinct from actions. */
+function conditionRunStateClasses(
+  status: ConditionNodeData["runStatus"],
+  selected: boolean,
+): string {
+  if (status === "running") {
+    return "border-sky-400 shadow-[0_0_28px_rgba(56,189,248,0.55)] animate-pulse";
+  }
+  if (status === "success") {
+    return "border-emerald-500/70 shadow-[0_0_18px_rgba(16,185,129,0.25)]";
+  }
+  if (status === "failed") {
+    return "border-rose-500/70 shadow-[0_0_18px_rgba(244,63,94,0.25)]";
+  }
+  if (status === "skipped") {
+    return "border-slate-700 opacity-50";
+  }
+  if (selected) {
+    return "border-amber-400 ring-2 ring-amber-500/40 shadow-[0_0_24px_rgba(251,191,36,0.35)]";
+  }
+  return "border-slate-700";
 }
 
 
