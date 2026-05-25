@@ -139,9 +139,16 @@ async def run(
         )
 
     secret = decrypt_secret(connection.encrypted_secret)
-    api_key = secret.get("api_key")
-    if not api_key:
+    raw_api_key = secret.get("api_key")
+    if not raw_api_key:
         raise ValueError("OpenWeatherMap connection has no api_key set")
+    # Strip whitespace defensively — copy-paste from the OpenWeatherMap
+    # dashboard sometimes brings a trailing newline along, which makes
+    # ``appid=ABC...\n`` 401 with "Invalid API key" even though the key
+    # itself is fine.
+    api_key = str(raw_api_key).strip()
+    if not api_key:
+        raise ValueError("OpenWeatherMap api_key is empty after stripping whitespace")
 
     # ---- Resolve location (zip wins over lat/lon when both set, since
     # operators paste a zip more often by mistake than lat/lon) ----
@@ -173,6 +180,34 @@ async def run(
             err = res.json().get("message")
         except Exception:  # noqa: BLE001 — best-effort
             err = res.text[:200]
+        # Diagnostic log: redact the key but include length + first/last
+        # 4 chars so the operator can confirm the right key is being
+        # sent. The full URL (with appid stripped) tells them whether
+        # zip vs lat/lon parsing did what they expected.
+        key_fingerprint = (
+            f"len={len(api_key)} starts={api_key[:4]} ends={api_key[-4:]}"
+            if len(api_key) >= 8
+            else f"len={len(api_key)}"
+        )
+        diag_params = {k: v for k, v in params.items() if k != "appid"}
+        logger.warning(
+            "weather_fetch: OpenWeatherMap %d - %s | sent params=%s | api_key %s",
+            res.status_code,
+            err,
+            diag_params,
+            key_fingerprint,
+        )
+        # 401 specifically usually means key-not-yet-active OR a paste
+        # included a stray space / newline. Tell the operator both.
+        if res.status_code == 401:
+            raise ValueError(
+                f"OpenWeatherMap rejected the API key ({err}). Two common causes: "
+                "(1) the key was created in the last hour and hasn't activated yet — "
+                "OpenWeatherMap can take 10 min to a few hours, just wait and retry. "
+                "(2) the pasted key had a stray space / newline — "
+                "open the connection, hit reveal, and verify the value looks clean. "
+                f"Key fingerprint sent: {key_fingerprint}."
+            )
         raise ValueError(f"OpenWeatherMap returned {res.status_code}: {err}")
 
     body = res.json()
