@@ -12,6 +12,7 @@ import {
   VerkadaCamera,
 } from "../lib/api";
 import EpochPicker from "../components/EpochPicker";
+import HelixEventTypeEditor from "../components/HelixEventTypeEditor";
 import { BetaChip, CostChip } from "../components/StepConfigForm";
 
 
@@ -136,6 +137,10 @@ export default function Byoa() {
   const [postToHelix, setPostToHelix] = useState(false);
   const [helixEventTypeUid, setHelixEventTypeUid] = useState<string>("");
   const [helixAttribute, setHelixAttribute] = useState<string>("");
+  // Inline "+ New type" editor toggle. When opened with a paired
+  // prompt selected we seed the form from the paired definition so
+  // the operator clicks once and gets the schema pre-filled.
+  const [creatingHelixType, setCreatingHelixType] = useState(false);
 
   // Helix event types for the picked Verkada connection — feeds both
   // dropdowns below the "Post to Helix" toggle. Same endpoint the action
@@ -578,18 +583,33 @@ export default function Byoa() {
                     : "Synced from Verkada — pick which event type to post against."
                 }
               >
-                <select
-                  value={helixEventTypeUid}
-                  onChange={(e) => setHelixEventTypeUid(e.target.value)}
-                  className="w-full px-2 py-1.5 rounded bg-white/5 border border-white/15 text-sm"
-                >
-                  <option value="">— pick an event type —</option>
-                  {(helixTypes.data ?? []).map((et) => (
-                    <option key={et.id} value={et.event_type_uid}>
-                      {et.name ?? "(unnamed)"}
-                    </option>
-                  ))}
-                </select>
+                <div className="flex gap-2 items-start">
+                  <select
+                    value={helixEventTypeUid}
+                    onChange={(e) => setHelixEventTypeUid(e.target.value)}
+                    className="flex-1 px-2 py-1.5 rounded bg-white/5 border border-white/15 text-sm"
+                  >
+                    <option value="">— pick an event type —</option>
+                    {(helixTypes.data ?? []).map((et) => (
+                      <option key={et.id} value={et.event_type_uid}>
+                        {et.name ?? "(unnamed)"}
+                      </option>
+                    ))}
+                  </select>
+                  <button
+                    type="button"
+                    onClick={() => setCreatingHelixType(true)}
+                    disabled={!verkadaConnId}
+                    title={
+                      pickedTemplate?.helix_event_type
+                        ? `Create the ${pickedTemplate.helix_event_type.name} type on this Verkada org (schema pre-filled from the paired prompt).`
+                        : "Create a new Helix event type on this Verkada org."
+                    }
+                    className="shrink-0 text-xs px-3 py-1.5 rounded border border-emerald-700/60 bg-emerald-900/40 text-emerald-200 hover:bg-emerald-800/60 disabled:opacity-40 disabled:cursor-not-allowed"
+                  >
+                    + New type
+                  </button>
+                </div>
               </Field>
               <Field
                 label="Write AI text into"
@@ -654,6 +674,33 @@ export default function Byoa() {
         the AI text, and the same per-phase progress checklist a flow
         execution gets.
       </p>
+
+      {creatingHelixType && verkadaConnId && (
+        <HelixEventTypeEditor
+          connId={verkadaConnId}
+          mode="create"
+          // Seed the form from the paired prompt's helix definition
+          // when one is selected — the operator opens the modal and
+          // the name + attribute rows are already populated for the
+          // common "the type doesn't exist on this org yet" path.
+          seed={
+            pickedTemplate?.helix_event_type
+              ? {
+                  name: pickedTemplate.helix_event_type.name,
+                  event_schema: pickedTemplate.helix_event_type.event_schema,
+                }
+              : undefined
+          }
+          onClose={() => setCreatingHelixType(false)}
+          onCreated={(created) => {
+            // Land back on BYOA with the new type selected so the
+            // operator can hit Brew immediately. The helix-types
+            // query also invalidates inside the editor, so the
+            // dropdown will repopulate on its own next render.
+            setHelixEventTypeUid(created.event_type_uid);
+          }}
+        />
+      )}
     </div>
   );
 }

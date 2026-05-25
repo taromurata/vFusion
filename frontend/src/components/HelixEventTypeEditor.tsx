@@ -35,20 +35,33 @@ export default function HelixEventTypeEditor({
   connId,
   mode,
   existing,
+  seed,
   onClose,
   onCreated,
 }: {
   connId: string;
   mode: "create" | "edit";
   existing?: HelixEventType;
+  /**
+   * Pre-fill values for ``create`` mode — used by paired-prompt flows
+   * (BYOA, action editor) where the prompt knows what Helix type it
+   * pairs with, so the operator clicks once and lands on a form
+   * with name + attributes already populated. Ignored in ``edit`` mode
+   * (the existing row's fields take precedence).
+   */
+  seed?: { name?: string | null; event_schema?: Record<string, string> | null };
   onClose: () => void;
   onCreated?: (created: HelixEventType) => void;
 }) {
   const qc = useQueryClient();
-  const [name, setName] = useState<string>(existing?.name ?? "");
+  const initialName = existing?.name ?? (mode === "create" ? seed?.name ?? "" : "");
+  const initialSchema =
+    existing?.event_schema ??
+    (mode === "create" ? seed?.event_schema ?? null : null);
+  const [name, setName] = useState<string>(initialName ?? "");
   const [attrs, setAttrs] = useState<AttrRow[]>(() => {
-    if (existing?.event_schema) {
-      return Object.entries(existing.event_schema).map(([k, t]) => ({
+    if (initialSchema) {
+      return Object.entries(initialSchema).map(([k, t]) => ({
         key: k,
         type: normalizeType(String(t)),
       }));
