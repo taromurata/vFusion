@@ -218,6 +218,14 @@ function RunDetailView({ run }: { run: RunDetail }) {
       </div>
 
       <div className="flex-1 overflow-auto p-4 space-y-4">
+        {/* Lift the captured clip/still to a run-level preview so it
+            shows regardless of which step the operator has expanded.
+            For a typical Gemini-analyze flow the asset is in step 1's
+            output, but operators reading step 2 (the condition) or
+            step 3 (the Helix post) still want to see what the camera
+            saw — it's the run's shared context. */}
+        <RunCapturedAsset run={run} />
+
         {run.error && (
           <div>
             <SectionTitle>Error</SectionTitle>
@@ -403,8 +411,13 @@ function StepCard({
           {step.status}
         </span>
       </div>
-      <div className="text-sm font-mono text-slate-100 mt-1 truncate">
-        {step.name}
+      <div
+        className={`text-sm text-slate-100 mt-1 truncate ${
+          step.label ? "font-medium" : "font-mono"
+        }`}
+        title={step.label ? step.name : undefined}
+      >
+        {step.label || step.name}
       </div>
       <div className="text-[10px] text-slate-500 mt-0.5 truncate">
         {step.type}
@@ -434,6 +447,54 @@ function StepCard({
 // single wrapped line is ugly; the action also exposes ``output.json``
 // (the same content already parsed) so we render that pretty-printed
 // when present, with the raw text under Details for the curious.
+// RunCapturedAsset
+//
+// Finds the first step in the run whose output carries a ``clip_path``
+// (video clip pulled from Verkada) or ``image_path`` (still frame
+// grab) and renders it once at the top of the run-detail pane. Means
+// the operator sees the camera context — same image Gemini looked at
+// — without having to expand the analyze step. Falls silent when
+// neither is present (e.g. weather_fetch runs, helix-only flows).
+function RunCapturedAsset({ run }: { run: RunDetail }) {
+  const stepWithClip = (run.steps ?? []).find((s) => {
+    const out = s.output as Record<string, unknown> | null | undefined;
+    return typeof out?.clip_path === "string" && out.clip_path;
+  });
+  const stepWithImage = (run.steps ?? []).find((s) => {
+    const out = s.output as Record<string, unknown> | null | undefined;
+    return typeof out?.image_path === "string" && out.image_path;
+  });
+
+  if (stepWithClip) {
+    const url = `${API_BASE}/api/runs/${run.id}/clip?step=${encodeURIComponent(stepWithClip.name)}`;
+    return (
+      <div>
+        <SectionTitle>Captured clip</SectionTitle>
+        <video
+          src={url}
+          controls
+          className="w-full rounded bg-black max-h-72"
+        />
+      </div>
+    );
+  }
+  if (stepWithImage) {
+    const url = `${API_BASE}/api/runs/${run.id}/image?step=${encodeURIComponent(stepWithImage.name)}`;
+    return (
+      <div>
+        <SectionTitle>Captured frame</SectionTitle>
+        <img
+          src={url}
+          alt="Captured frame"
+          className="w-full rounded bg-black max-h-72 object-contain"
+        />
+      </div>
+    );
+  }
+  return null;
+}
+
+
 function OutputSection({ output }: { output: unknown }) {
   const obj =
     output && typeof output === "object" && !Array.isArray(output)
@@ -608,8 +669,13 @@ function StepBlock({
         >
           {step.status}
         </span>
-        <span className="text-sm font-mono text-slate-100 truncate flex-1">
-          {step.name}
+        <span
+          className={`text-sm text-slate-100 truncate flex-1 ${
+            step.label ? "font-medium" : "font-mono"
+          }`}
+          title={step.label ? step.name : undefined}
+        >
+          {step.label || step.name}
         </span>
         <span className="text-xs text-slate-500 font-mono">{step.type}</span>
         {duration !== null && (

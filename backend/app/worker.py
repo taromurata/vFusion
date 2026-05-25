@@ -203,6 +203,12 @@ async def run_flow(ctx: dict[str, Any], run_id: str) -> dict[str, Any]:  # noqa:
 
             record: dict[str, Any] = {
                 "name": node.get("name") or nid,
+                # Friendly display name set on the flow node (e.g.
+                # "Inspect the view" vs "analyze"). The Runs UI prefers
+                # this so step chips read like English instead of Python
+                # identifiers. ``name`` stays the canonical id for any
+                # downstream tooling that joins on it.
+                "label": node.get("label") or None,
                 "type": node.get("action_type") or node.get("kind", "action"),
                 "kind": node.get("kind", "action"),
                 "started_at": started_at.isoformat(),

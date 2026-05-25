@@ -525,6 +525,10 @@ export interface RunListItem {
 
 export interface RunStep {
   name: string;
+  // Friendly display label set on the flow node. The Runs page uses
+  // this in step chips + detail headers, falling back to ``name``
+  // when blank. ``name`` stays canonical for any join / lookup.
+  label?: string | null;
   type: string;
   kind?: "action" | "condition";
   status: "running" | "success" | "failed" | "skipped";
