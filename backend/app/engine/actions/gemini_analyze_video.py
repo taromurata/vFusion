@@ -90,51 +90,107 @@ _DEFAULT_PROMPT = (
 # wire Helix themselves.
 PROMPT_TEMPLATES: list[dict[str, Any]] = [
     {
-        "name": "Security camera description (default)",
-        "value": _DEFAULT_PROMPT,
+        # Mirrors the "Animal species detection" flow template. Returns
+        # JSON {animal, behavior} so the paired 🦌 Animal Watch Helix
+        # type's attributes map cleanly. Picking this in BYOA yields
+        # the same result as the flow would.
+        "name": "Animal species detection (JSON)",
+        "value": (
+            "Identify the animal in this security camera video and describe "
+            "what it is doing. Respond with ONLY a JSON object - no prose, "
+            "no code fence - with exactly two string keys:\n"
+            "  \"animal\":   the species in lowercase (e.g. \"bear\", "
+            "\"deer\", \"coyote\", \"raccoon\"), or \"none\" if no animal is "
+            "clearly visible.\n"
+            "  \"behavior\": a 1-4 word verb phrase describing what the "
+            "animal is doing (e.g. \"walking\", \"feeding\", \"climbing "
+            "fence\", \"investigating trash\"). Use \"unknown\" if the "
+            "animal is too brief or unclear to tell.\n\n"
+            "Example: {\"animal\": \"bear\", \"behavior\": \"walking\"}"
+        ),
         "helix_event_type": {
-            "event_type_uid": "tpl:ai-camera-summary",
-            "name": "AI Camera Summary",
-            "event_schema": {"Description": "string"},
+            "event_type_uid": "tpl:animal-watch",
+            "name": "🦌 Animal Watch",
+            "event_schema": {
+                "Animal": "string",
+                "Behavior": "string",
+            },
         },
         "helix_attribute_mapping": {
-            "Description": "{{ output.text }}",
+            "Animal": "{{ output.json.animal }}",
+            "Behavior": "{{ output.json.behavior }}",
         },
     },
     {
-        "name": "Animal detection (outdoor)",
+        # Mirrors the "Hourly shelf-stock check" flow template.
+        "name": "Shelf stock check (JSON)",
         "value": (
-            "Look at this security camera footage and identify any animals you "
-            "can clearly see. Say what species, how many, and what they're doing. "
-            "If no animals are visible, say 'no animals detected'. Do not invent "
-            "details that are not visible. Limit response to 190-199 characters."
+            "Estimate how full the shelf, display, or clothing rack in this "
+            "image is on a scale of 0-100, where 100 is fully stocked and 0 "
+            "is empty.\n\n"
+            "Respond with ONLY a JSON object - no prose, no code fence - "
+            "with exactly two keys:\n"
+            "  \"stock_level\": integer 0-100. Use your best estimate; do "
+            "not pad with words like \"about\".\n"
+            "  \"reasoning\":   one-sentence note on what you observed "
+            "(which fixtures, what's missing), max 180 characters.\n\n"
+            "Examples:\n"
+            "  {\"stock_level\": 65, \"reasoning\": \"Bottom shelf about "
+            "two-thirds full, top shelf nearly empty with visible gaps "
+            "between SKUs.\"}\n"
+            "  {\"stock_level\": 10, \"reasoning\": \"Only two items "
+            "remaining on the entire rack, all in one corner.\"}\n"
+            "  {\"stock_level\": 100, \"reasoning\": \"Fully stocked, no "
+            "visible gaps anywhere on the display.\"}"
         ),
         "helix_event_type": {
-            "event_type_uid": "tpl:animal-sighting",
-            "name": "🦌 Animal Sighting",
-            "event_schema": {"Sighting": "string"},
+            "event_type_uid": "tpl:shelf-stock",
+            "name": "📦 Shelf Stock",
+            "event_schema": {
+                "Stock Level": "integer",
+                "Reasoning": "string",
+            },
         },
         "helix_attribute_mapping": {
-            "Sighting": "{{ output.text }}",
+            "Stock Level": "{{ output.json.stock_level }}",
+            "Reasoning": "{{ output.json.reasoning }}",
         },
     },
     {
-        "name": "OCR - extract visible text",
+        # Mirrors the "OCR-triggered door unlock" flow template — JSON
+        # output with text + has_text so a condition can branch on
+        # whether anything was read.
+        "name": "OCR — extract visible text (JSON)",
         "value": (
-            "Extract every piece of legible text visible in this footage. "
-            "Include sign text, license plates, screens, labels, papers - "
-            "anything readable. Return each piece on its own line, no quotes. "
-            "Do not invent text; if you cannot clearly read a character, omit "
-            "it. If no text is visible, respond with 'no text visible'. Limit "
-            "response to 190-199 characters."
+            "Read every piece of legible text, signage, and license plates "
+            "visible in this security camera frame.\n\n"
+            "Respond with ONLY a JSON object - no prose, no code fence - "
+            "with exactly two keys:\n"
+            "  \"text\":     the full extracted text as a single string, "
+            "multiple items separated by a pipe \"|\" character (e.g. "
+            "\"FEDEX|7BCV928\"). Lowercase the text so downstream matching "
+            "is case-insensitive. Use \"none\" when no text is legible.\n"
+            "  \"has_text\": boolean, true when at least one piece of text "
+            "was read, false otherwise.\n\n"
+            "Do not invent characters. If you can't clearly read a "
+            "character, leave it out. Skip generic stuff like brand "
+            "watermarks on the camera UI itself.\n\n"
+            "Examples:\n"
+            "  {\"text\": \"fedex|7bcv928\", \"has_text\": true}\n"
+            "  {\"text\": \"ups|conway construction\", \"has_text\": true}\n"
+            "  {\"text\": \"none\", \"has_text\": false}"
         ),
         "helix_event_type": {
-            "event_type_uid": "tpl:ocr-capture",
-            "name": "OCR Capture",
-            "event_schema": {"Text": "string"},
+            "event_type_uid": "tpl:ocr-match",
+            "name": "🔓 OCR Match Unlock",
+            "event_schema": {
+                "Match Value": "string",
+                "Observed Text": "string",
+                "Door": "string",
+            },
         },
         "helix_attribute_mapping": {
-            "Text": "{{ output.text }}",
+            "Observed Text": "{{ output.json.text }}",
         },
     },
     {
