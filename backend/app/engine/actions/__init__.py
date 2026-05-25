@@ -48,6 +48,11 @@ from app.engine.actions.verkada_release_scenario import (
     SCHEMA as VERKADA_RELEASE_SCENARIO_SCHEMA,
     run as run_verkada_release_scenario,
 )
+from app.engine.actions.weather_fetch import (
+    SAMPLE_OUTPUT as WEATHER_FETCH_OUTPUT,
+    SCHEMA as WEATHER_FETCH_SCHEMA,
+    run as run_weather_fetch,
+)
 
 
 class ActionSpec(NamedTuple):
@@ -141,6 +146,21 @@ ACTIONS: dict[str, ActionSpec] = {
         output_sample=VERKADA_RELEASE_SCENARIO_OUTPUT,
         run=run_verkada_release_scenario,
         default_step_name="release_scenario",
+    ),
+    # ---- Third-party data actions ----
+    "weather_fetch": ActionSpec(
+        type="weather_fetch",
+        label="Weather: Fetch current conditions (OpenWeatherMap)",
+        description=(
+            "Call OpenWeatherMap's current-weather endpoint with a zip "
+            "code or lat/lon and return parsed atmospheric data. Pair "
+            "with a schedule trigger + verkada_helix_event to log "
+            "real-time weather to a Verkada Helix \"Weather\" type."
+        ),
+        schema=WEATHER_FETCH_SCHEMA,
+        output_sample=WEATHER_FETCH_OUTPUT,
+        run=run_weather_fetch,
+        default_step_name="fetch_weather",
     ),
     # ---- Generic / building-block actions ----
     "verkada_api_call": ActionSpec(

@@ -26,6 +26,8 @@ export function actionIcon(actionType: string | null | undefined): string {
   if (actionType === "verkada_release_scenario") return "✅";
   if (actionType === "verkada_api_call") return "🛰️";
   if (actionType.startsWith("verkada_")) return "📹";
+  // Third-party data sources — extend as new ones land.
+  if (actionType === "weather_fetch") return "☁️";
   // Generic catch-all so future actions still render something.
   return "⚙️";
 }

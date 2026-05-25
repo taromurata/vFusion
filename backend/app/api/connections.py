@@ -48,6 +48,14 @@ CONNECTION_TYPES: dict[str, dict[str, Any]] = {
             {"name": "api_key", "label": "Gemini API key", "type": "secret", "required": True, "help": "From https://aistudio.google.com/apikey — used by the Gemini video analysis action."},
         ],
     },
+    "openweathermap": {
+        "label": "OpenWeatherMap",
+        "description": "API key for OpenWeatherMap — used by the weather_fetch action to pull real atmospheric conditions for a lat/lon or zip code.",
+        "required_for_setup": "api_key",
+        "fields": [
+            {"name": "api_key", "label": "OpenWeatherMap API key", "type": "secret", "required": True, "help": "Free tier is fine for most flows. From https://home.openweathermap.org/api_keys after signing up."},
+        ],
+    },
     "verkada": {
         "label": "Verkada Org",
         "description": "API key + optional webhook signing secret for one Verkada org.",

@@ -1,8 +1,8 @@
 {
   "id": "weather-sentry",
   "name": "Weather sentry",
-  "description": "Schedule pulls a still from an outdoor camera (parking lot, yard, perimeter) and asks Gemini to judge current conditions and visibility. Posts to Helix so ops teams can alert on developing hazards \u2014 heavy rain, fog rolling in, snow accumulation \u2014 without paying for a weather service or running a separate sensor stack.",
-  "summary": "Schedule every 30 min \u2192 Gemini still-image (JSON) \u2192 Helix weather event",
+  "description": "Pulls real atmospheric data from OpenWeatherMap on a schedule and posts it to a Verkada Helix \"Weather\" event so ops can see live conditions next to a camera in Command and alert on hazards like wind, low visibility, or freezing temps. Enter a zip code (or lat/lon for a specific yard / job site) before enabling. Requires an OpenWeatherMap connection — free tier is fine.",
+  "summary": "Schedule every 30 min -> OpenWeatherMap (real API) -> Helix weather event",
   "default_name": "Weather sentry",
   "flow": {
     "trigger_type": "schedule",
@@ -13,27 +13,33 @@
     "helix_event_types": [
       {
         "event_type_uid": "tpl:weather",
-        "name": "\u2601\ufe0f Weather",
+        "name": "☁️ Weather",
         "event_schema": {
-          "Conditions": "string",
-          "Visibility": "string",
-          "Hazards": "string"
+          "conditions": "string",
+          "temp": "float",
+          "feelslike": "float",
+          "humidity": "integer",
+          "pressure": "integer",
+          "windspeed": "float",
+          "winddir": "integer",
+          "visibility": "integer"
         }
       }
     ],
     "nodes": [
       {
-        "id": "observe",
-        "name": "observe",
-        "label": "Observe conditions",
+        "id": "fetch_weather",
+        "name": "fetch_weather",
+        "label": "Fetch conditions",
         "kind": "action",
-        "action_type": "gemini_analyze_still_image",
+        "action_type": "weather_fetch",
         "config": {
           "connection_id": null,
-          "gemini_connection_id": null,
-          "camera_id": "",
-          "model": "gemini-2.5-flash",
-          "prompt": "You are judging weather conditions from an outdoor security camera frame. Look at the sky, ground, surfaces, and atmosphere.\n\nRespond with ONLY a JSON object - no prose, no code fence - with exactly three keys:\n  \"conditions\": one of \"clear\", \"cloudy\", \"overcast\", \"rain\", \"snow\", \"fog\", \"storm\", or \"unknown\". Pick the dominant condition. Use \"unknown\" if the camera is indoors / blocked / nighttime with no visual signal.\n  \"visibility\": one of \"good\" (you can see across the frame normally), \"reduced\" (haze / light rain / partial fog), \"poor\" (heavy precipitation / dense fog / sub-100ft visibility).\n  \"hazards\":    short comma-separated string of active hazards you observe (e.g. \"ice on pavement, snow accumulation, standing water, blowing debris\"), or \"none\" when nothing notable.\n\nDo not infer beyond what's visible:\n  - Don't predict (no \"looks like it might rain\").\n  - Don't quote temperatures or wind speed - you don't have sensors.\n  - Nighttime with clear sky should be \"clear\" + \"good\" visibility, NOT \"unknown\".\n\nExamples:\n  {\"conditions\": \"clear\", \"visibility\": \"good\", \"reasoning_omit\": null, \"hazards\": \"none\"}\n  {\"conditions\": \"snow\", \"visibility\": \"reduced\", \"hazards\": \"snow accumulation on driveway, slippery surface likely\"}\n  {\"conditions\": \"fog\", \"visibility\": \"poor\", \"hazards\": \"dense fog, vehicles barely visible 30 feet out\"}\n  {\"conditions\": \"rain\", \"visibility\": \"reduced\", \"hazards\": \"standing water near loading dock\"}"
+          "zip": "",
+          "country": "US",
+          "latitude": "",
+          "longitude": "",
+          "units": "imperial"
         },
         "position": {
           "x": 220,
@@ -43,7 +49,7 @@
       {
         "id": "post_helix",
         "name": "post_helix",
-        "label": "Log conditions",
+        "label": "Log to Helix",
         "kind": "action",
         "action_type": "verkada_helix_event",
         "config": {
@@ -51,9 +57,14 @@
           "camera_id": "",
           "event_type_uid": "tpl:weather",
           "attributes": {
-            "Conditions": "{{ steps.observe.output.json.conditions }}",
-            "Visibility": "{{ steps.observe.output.json.visibility }}",
-            "Hazards": "{{ steps.observe.output.json.hazards }}"
+            "conditions": "{{ steps.fetch_weather.output.json.conditions }}",
+            "temp": "{{ steps.fetch_weather.output.json.temp }}",
+            "feelslike": "{{ steps.fetch_weather.output.json.feels_like }}",
+            "humidity": "{{ steps.fetch_weather.output.json.humidity }}",
+            "pressure": "{{ steps.fetch_weather.output.json.pressure }}",
+            "windspeed": "{{ steps.fetch_weather.output.json.wind_speed }}",
+            "winddir": "{{ steps.fetch_weather.output.json.wind_direction }}",
+            "visibility": "{{ steps.fetch_weather.output.json.visibility }}"
           },
           "time_ms": "{{ trigger.fired_at }}000"
         },
@@ -65,14 +76,13 @@
     ],
     "edges": [
       {
-        "id": "e_observe_post",
-        "source": "observe",
+        "id": "e_fetch_post",
+        "source": "fetch_weather",
         "target": "post_helix"
       }
     ]
   },
   "tags": [
-    "Cameras",
-    "Gemini Vision"
+    "Cameras"
   ]
 }
