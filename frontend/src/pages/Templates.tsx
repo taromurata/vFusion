@@ -128,6 +128,15 @@ function FlowTemplatesPanel() {
     onSuccess: () => qc.invalidateQueries({ queryKey: ["flow-templates"] }),
   });
 
+  // Tag filter — empty Set means "show everything". When the operator
+  // clicks a tag chip in the filter bar we toggle membership; templates
+  // are visible only if they carry *every* selected tag (AND semantics),
+  // so two filters narrow the list together rather than expanding it.
+  //
+  // ALL hooks must run on every render — keep this above the early
+  // returns below or React's hook-order rules trip.
+  const [activeTags, setActiveTags] = useState<Set<string>>(new Set());
+
   if (list.isLoading) {
     return <div className="text-sm text-slate-400">Loading…</div>;
   }
@@ -140,12 +149,6 @@ function FlowTemplatesPanel() {
       </div>
     );
   }
-
-  // Tag filter — empty Set means "show everything". When the operator
-  // clicks a tag chip in the filter bar we toggle membership; templates
-  // are visible only if they carry *every* selected tag (AND semantics),
-  // so two filters narrow the list together rather than expanding it.
-  const [activeTags, setActiveTags] = useState<Set<string>>(new Set());
 
   // Collect every tag that appears on any template so the filter bar
   // shows real options (not a hardcoded list that can drift from
