@@ -17,7 +17,9 @@ export function actionIcon(actionType: string | null | undefined): string {
   // Verkada actions: split by what they actually do, since the user
   // cares about the verb more than the vendor.
   if (actionType === "verkada_unlock_door") return "🔓";
-  if (actionType === "verkada_helix_event") return "📝";
+  // Helix → double-helix → DNA. The on-canvas read matches the
+  // product name, which makes the card instantly recognizable.
+  if (actionType === "verkada_helix_event") return "🧬";
   if (actionType === "verkada_grab_clip") return "🎞️";
   if (actionType === "verkada_grab_still") return "📷";
   if (actionType === "verkada_activate_scenario") return "🚨";
@@ -30,9 +32,10 @@ export function actionIcon(actionType: string | null | undefined): string {
 
 export function triggerIcon(triggerType: string | null | undefined): string {
   if (triggerType === "schedule") return "⏰";
-  // Verkada webhook is the default — camera icon reads as "real-time
-  // physical event".
-  return "📡";
+  // Webhooks are HTTP payloads — render the universal code shorthand
+  // instead of an emoji. The canvas component renders the icon slot
+  // as text-xl so "</>" appears at the same visual weight as an emoji.
+  return "</>";
 }
 
 export function conditionIcon(): string {

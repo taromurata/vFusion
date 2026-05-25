@@ -124,8 +124,9 @@ function ExpressionPretty({
 
 /** Render a single value as either:
  *   - a styled template-variable pill (when the raw text looks like
- *     ``{{ steps.x.output.y.z }}`` — we surface just the last segment
- *     for readability, full path stays as a tooltip), or
+ *     ``{{ steps.x.output.y.z }}`` — we surface ``stepname.field`` so
+ *     it's clear *where* the value came from, not just what the field
+ *     is named. Full path stays as a tooltip), or
  *   - a quoted literal chip for everything else.
  */
 function ValuePill({ raw }: { raw: string }) {
@@ -138,14 +139,12 @@ function ValuePill({ raw }: { raw: string }) {
   const tplMatch = trimmed.match(/^\{\{\s*([\w.]+)\s*\}\}$/);
   if (tplMatch) {
     const path = tplMatch[1];
-    const parts = path.split(".");
-    const last = parts[parts.length - 1] || path;
     return (
       <span
         className="inline-flex items-center px-1.5 py-0.5 rounded bg-sky-900/60 border border-sky-800 text-sky-100 font-mono text-[11px]"
         title={`{{ ${path} }}`}
       >
-        {last}
+        {prettyVarPath(path)}
       </span>
     );
   }
@@ -157,6 +156,33 @@ function ValuePill({ raw }: { raw: string }) {
       "{trimmed}"
     </span>
   );
+}
+
+
+/** Collapse a template path to its meaningful segments. We drop the
+ *  scaffold keys (``steps``, ``output``, ``json``, ``data``) that don't
+ *  carry information about *what* the value is and keep the rest joined
+ *  with dots. Examples:
+ *
+ *    steps.analyze.output.json.animal  →  analyze.animal
+ *    steps.ocr.output.text             →  ocr.text
+ *    trigger.data.camera_id            →  trigger.camera_id
+ *    trigger.fired_at                  →  trigger.fired_at
+ *
+ *  This way the condition card always shows ``<source>.<field>`` so the
+ *  operator can tell which step produced the value at a glance.
+ */
+const NOISE_SEGMENTS = new Set(["steps", "output", "json", "data"]);
+
+function prettyVarPath(path: string): string {
+  const parts = path.split(".");
+  const meaningful = parts.filter((p) => !NOISE_SEGMENTS.has(p));
+  if (meaningful.length === 0) {
+    // All segments were noise — fall back to the raw last segment so
+    // we still render something useful (rare case, e.g. `{{ steps }}`).
+    return parts[parts.length - 1] || path;
+  }
+  return meaningful.join(".");
 }
 
 
