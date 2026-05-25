@@ -1,9 +1,9 @@
 {
   "id": "animal-detection-alerts",
-  "name": "Animal detection alerts",
-  "description": "Catch motion events from a wildlife or outdoor camera, ask Gemini what animal is in the frame and what it's doing, and post the result to Helix so Verkada Command can alert when it sees a specific species (e.g. bear).",
+  "name": "Animal species detection",
+  "description": "Catch motion events from a wildlife or outdoor camera, ask Gemini what animal species is in the frame and what it's doing, and post the result to Helix so Verkada Command can alert when it sees a specific species (e.g. bear).",
   "summary": "Webhook -> Gemini analyze (JSON) -> condition on \"bear\" -> Helix event with Animal + Behavior",
-  "default_name": "Animal detection alerts",
+  "default_name": "Animal species detection",
   "flow": {
     "trigger_type": "verkada_webhook",
     "trigger_config": {
