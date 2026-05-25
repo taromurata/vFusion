@@ -17,15 +17,23 @@ import {
 import HelixBootstrapModal from "../components/HelixBootstrapModal";
 
 
-// Curated tag colors. Templates whose tags aren't in this map fall back
-// to a neutral chip. New tag families can be added without touching
-// any other code — anything declared in template JSONs but not listed
-// here just gets the default styling.
+// Curated tag colors per product line. Templates whose tags aren't in
+// this map fall back to a neutral chip. New tag families can be added
+// without touching any other code — anything declared in template
+// JSONs but not listed here just gets the default styling.
+//
+// The taxonomy is product-line oriented (Cameras, Access control,
+// Gemini Vision) rather than trigger-axis (Schedule/Webhook) — the
+// trigger type already shows up in the action icons + the trigger
+// node's filter pills, so duplicating it as a tag was just noise.
 const TAG_STYLE: Record<string, string> = {
-  Vision: "bg-violet-900/60 text-violet-200 border-violet-800",
+  Cameras: "bg-sky-900/60 text-sky-200 border-sky-800",
   "Access control": "bg-rose-900/60 text-rose-200 border-rose-800",
-  Schedule: "bg-amber-900/60 text-amber-200 border-amber-800",
-  Webhook: "bg-sky-900/60 text-sky-200 border-sky-800",
+  "Gemini Vision": "bg-violet-900/60 text-violet-200 border-violet-800",
+  Alarms: "bg-orange-900/60 text-orange-200 border-orange-800",
+  Sensors: "bg-amber-900/60 text-amber-200 border-amber-800",
+  Intercoms: "bg-pink-900/60 text-pink-200 border-pink-800",
+  LPR: "bg-emerald-900/60 text-emerald-200 border-emerald-800",
 };
 
 const DEFAULT_TAG_STYLE =
