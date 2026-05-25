@@ -15,6 +15,11 @@ export interface ActionNodeData extends Record<string, unknown> {
   // run is being tracked or this step hasn't started yet — the node
   // renders in its resting state.
   runStatus?: "running" | "success" | "failed" | "skipped";
+  // Labels of any required fields still unfilled on this step. When
+  // non-empty the card shows an amber "needs config" badge with the
+  // list in a tooltip so operators can see what to fix without saving
+  // first.
+  missingRequired?: string[];
 }
 
 
@@ -51,6 +56,9 @@ export default function ActionNode({ data, selected }: NodeProps) {
           )}
         </div>
         {d.runStatus && <RunBadge status={d.runStatus} />}
+        {!d.runStatus && d.missingRequired && d.missingRequired.length > 0 && (
+          <NeedsConfigBadge fields={d.missingRequired} />
+        )}
         <button
           className="nodrag text-xs px-1 text-slate-400 hover:text-rose-300 disabled:opacity-30 disabled:cursor-not-allowed"
           disabled={!d.canRemove}
@@ -118,6 +126,23 @@ export function runStateClasses(
     return "border-sky-400 ring-2 ring-sky-500/40 shadow-[0_0_24px_rgba(56,189,248,0.35)]";
   }
   return "border-slate-700";
+}
+
+
+/** Amber pill on the card header when required fields are unfilled.
+ *  Hover surfaces the list of missing field labels so the operator
+ *  can fix them without saving the flow first. Hidden during runs
+ *  (the RunBadge takes priority — once a step is running we care
+ *  about its status, not its config). */
+export function NeedsConfigBadge({ fields }: { fields: string[] }) {
+  return (
+    <span
+      className="text-[9px] uppercase tracking-wider font-bold px-1.5 py-0.5 rounded bg-amber-600 text-white"
+      title={`Required fields still empty: ${fields.join(", ")}`}
+    >
+      needs config
+    </span>
+  );
 }
 
 

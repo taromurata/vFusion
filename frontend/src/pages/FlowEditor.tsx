@@ -509,6 +509,14 @@ function FlowEditorInner() {
       const pos = posFor(node);
       const outgoingCount = edges.filter((e) => e.source === node.id).length;
       const runStatus = stepStatusByName[node.name];
+      const conditionSpec = actionSpecs.data?._condition;
+      const actionSpec = actionSpecs.data?.[node.action_type ?? ""];
+      // Condition nodes use the synthetic ``_condition`` spec for
+      // required-field validation; action nodes use their own spec.
+      const missingRequired = missingRequiredFields(
+        node,
+        node.kind === "condition" ? conditionSpec : actionSpec,
+      );
       if (node.kind === "condition") {
         return {
           id: node.id,
@@ -521,6 +529,7 @@ function FlowEditorInner() {
             onAddBranch: (branch: "true" | "false") =>
               setPicker({ sourceId: node.id, branch }),
             runStatus,
+            missingRequired,
           },
           selected: selected.kind === "node" && selected.id === node.id,
           draggable: true,
@@ -532,12 +541,13 @@ function FlowEditorInner() {
         position: pos,
         data: {
           node,
-          spec: actionSpecs.data?.[node.action_type ?? ""],
+          spec: actionSpec,
           canRemove: true,
           outgoingCount,
           onRemove: () => removeNode(node.id),
           onAddChild: () => setPicker({ sourceId: node.id, branch: null }),
           runStatus,
+          missingRequired,
         },
         selected: selected.kind === "node" && selected.id === node.id,
         draggable: true,
@@ -1057,7 +1067,47 @@ function FlowEditorInner() {
                     ...namePatch,
                   });
                 }}
-                onChangeConfig={(c) => updateNode(selectedNode.id, { config: c })}
+                onChangeConfig={(c) => {
+                  // Auto-mirror camera_id from a Gemini analyze step to
+                  // any downstream verkada_helix_event nodes — the
+                  // event almost always wants to land on the same
+                  // camera the analysis came from. We only push when
+                  // the helix node's camera_id is blank or still
+                  // matches the analyze step's *previous* value
+                  // (template default included), so an operator who
+                  // intentionally points the helix step at a
+                  // different camera doesn't get overwritten.
+                  const prev = selectedNode.config ?? {};
+                  const prevCamera = (prev.camera_id as string) ?? "";
+                  const nextCamera = (c.camera_id as string) ?? "";
+                  updateNode(selectedNode.id, { config: c });
+                  if (
+                    (selectedNode.action_type ?? "").startsWith(
+                      "gemini_analyze",
+                    ) &&
+                    prevCamera !== nextCamera
+                  ) {
+                    const downstream = downstreamHelixSteps(
+                      selectedNode.id,
+                      nodes,
+                      edges,
+                    );
+                    for (const helix of downstream) {
+                      const helixCamera =
+                        (helix.config?.camera_id as string) ?? "";
+                      const matchesPrev =
+                        helixCamera === "" || helixCamera === prevCamera;
+                      if (matchesPrev) {
+                        updateNode(helix.id, {
+                          config: {
+                            ...(helix.config ?? {}),
+                            camera_id: nextCamera,
+                          },
+                        });
+                      }
+                    }
+                  }
+                }}
               />
             )}
             {selected.kind === "edge" && selectedEdge && (
@@ -1107,16 +1157,15 @@ function TriggerKindBtn({
 }
 
 
-/** BFS forward from ``nodeId`` looking for any ``verkada_helix_event``
- *  node. Used to suppress the "+ Add Helix logging step" affordance
- *  when one's already wired downstream — the template apply path
- *  lands the editor on a pre-wired flow, and offering a second
- *  Helix step on top would just create a duplicate. */
-function hasDownstreamHelixStep(
+/** BFS forward from ``nodeId`` returning every ``verkada_helix_event``
+ *  node found along any downstream path. Used both for the
+ *  "needs no insertion" check (hasDownstreamHelixStep) and the
+ *  auto-mirror-camera_id path. Visits each node at most once. */
+function downstreamHelixSteps(
   nodeId: string,
   nodes: FlowNode[],
   edges: FlowEdge[],
-): boolean {
+): FlowNode[] {
   const byId = new Map(nodes.map((n) => [n.id, n] as const));
   const outgoing = new Map<string, FlowEdge[]>();
   for (const e of edges) {
@@ -1125,6 +1174,7 @@ function hasDownstreamHelixStep(
   }
   const visited = new Set<string>();
   const queue: string[] = [nodeId];
+  const result: FlowNode[] = [];
   while (queue.length) {
     const current = queue.shift()!;
     for (const e of outgoing.get(current) ?? []) {
@@ -1132,11 +1182,56 @@ function hasDownstreamHelixStep(
       visited.add(e.target);
       const n = byId.get(e.target);
       if (!n) continue;
-      if (n.action_type === "verkada_helix_event") return true;
+      if (n.action_type === "verkada_helix_event") result.push(n);
       queue.push(n.id);
     }
   }
-  return false;
+  return result;
+}
+
+
+/** Convenience boolean over ``downstreamHelixSteps`` for the "suppress
+ *  + Add Helix logging step" affordance — see the call site. */
+function hasDownstreamHelixStep(
+  nodeId: string,
+  nodes: FlowNode[],
+  edges: FlowEdge[],
+): boolean {
+  return downstreamHelixSteps(nodeId, nodes, edges).length > 0;
+}
+
+
+/** List the labels of any required fields on this action that are
+ *  currently unfilled. Returns an empty list when the action is fully
+ *  configured (or when we don't know the spec — better to render no
+ *  warning than a false positive).
+ *
+ *  Considers a value "filled" when it's any non-empty, non-null,
+ *  non-blank string / object / array. Numbers and booleans count even
+ *  when 0 / false — they're explicit choices. ``connection_id``s are
+ *  validated by literal presence; we don't dereference to confirm the
+ *  connection still exists (saved flows can outlive a connection
+ *  deletion). Template refs like ``{{ trigger.data.camera_id }}`` are
+ *  considered filled — they resolve at run time, not edit time.
+ */
+function missingRequiredFields(
+  node: FlowNode,
+  spec: ActionSpec | undefined,
+): string[] {
+  if (!spec || node.kind !== "action") return [];
+  const cfg = node.config ?? {};
+  const missing: string[] = [];
+  for (const f of spec.schema.fields ?? []) {
+    if (!f.required) continue;
+    const value = cfg[f.name];
+    const filled =
+      value !== undefined &&
+      value !== null &&
+      !(typeof value === "string" && value.trim() === "") &&
+      !(Array.isArray(value) && value.length === 0);
+    if (!filled) missing.push(f.label || f.name);
+  }
+  return missing;
 }
 
 

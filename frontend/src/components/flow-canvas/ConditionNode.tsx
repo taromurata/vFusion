@@ -1,6 +1,7 @@
 import { Handle, Position, NodeProps } from "@xyflow/react";
 
 import { FlowNode } from "../../lib/api";
+import { NeedsConfigBadge } from "./ActionNode";
 import { conditionIcon } from "./icons";
 
 
@@ -12,6 +13,9 @@ export interface ConditionNodeData extends Record<string, unknown> {
   // See ActionNodeData.runStatus — same semantics. ``skipped`` shows up
   // a lot on conditions because only one branch fires per run.
   runStatus?: "running" | "success" | "failed" | "skipped";
+  // Labels of any required condition fields still unfilled. See
+  // ActionNodeData.missingRequired for behavior.
+  missingRequired?: string[];
 }
 
 
@@ -43,6 +47,9 @@ export default function ConditionNode({ data, selected }: NodeProps) {
             </div>
           )}
         </div>
+        {!d.runStatus && d.missingRequired && d.missingRequired.length > 0 && (
+          <NeedsConfigBadge fields={d.missingRequired} />
+        )}
         <button
           className="nodrag text-xs px-1 text-slate-400 hover:text-rose-300 disabled:opacity-30 disabled:cursor-not-allowed"
           disabled={!d.canRemove}
