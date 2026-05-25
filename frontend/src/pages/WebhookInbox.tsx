@@ -13,6 +13,7 @@ import {
   WebhookEventListResponse,
 } from "../lib/api";
 import JsonView from "../components/JsonView";
+import Redacted from "../components/Redacted";
 import { FamilyBadge, SignatureBadge } from "../components/Badges";
 import PendingSetupBanner from "../components/PendingSetupBanner";
 import { useBrand } from "../lib/brand";
@@ -354,9 +355,11 @@ function WebhookEndpointBanner() {
             Public webhook URL{ephemeral ? " — quick mode" : ""}
           </div>
           {url ? (
-            <code className="font-mono text-sm text-slate-100 break-all">
-              {url}
-            </code>
+            <Redacted persistent>
+              <code className="font-mono text-sm text-slate-100 break-all">
+                {url}
+              </code>
+            </Redacted>
           ) : (
             <div className="text-xs text-slate-400 italic">
               Waiting for cloudflared to come online…
@@ -659,19 +662,23 @@ function AssetHeaderPreview({
   const fileUrl = `${API_BASE}/api/webhook-events/assets/${a.id}/file`;
   const isImage = !a.content_type || a.content_type.startsWith("image/");
   return (
-    <div className="shrink-0 border border-slate-800 rounded overflow-hidden bg-slate-950 w-40">
-      <div className="bg-black flex items-center justify-center min-h-[80px] max-h-[120px]">
+    // ``relative`` + ``group`` so the image inside can grow on hover
+    // without pushing surrounding layout — we scale it via CSS transform
+    // and lift it above siblings with z-index so it overlays the JSON
+    // body instead of being clipped by it.
+    <div className="shrink-0 border border-slate-800 rounded overflow-visible bg-slate-950 w-40 relative group">
+      <div className="bg-black flex items-center justify-center min-h-[80px] max-h-[120px] overflow-visible">
         {a.status === "ready" && isImage ? (
           <button
             type="button"
             onClick={() => onZoom({ url: fileUrl, alt: a.source_field })}
-            className="block cursor-zoom-in"
-            title="Click to enlarge"
+            className="block cursor-zoom-in transition-transform duration-200 group-hover:scale-[2] group-hover:z-50 origin-right relative"
+            title="Hover to preview · click to enlarge"
           >
             <img
               src={fileUrl}
               alt={a.source_field}
-              className="block max-h-[120px] w-auto"
+              className="block max-h-[120px] w-auto rounded"
               loading="lazy"
             />
           </button>

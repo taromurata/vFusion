@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 
 import { apiGet, apiPost, PublicConfig } from "../lib/api";
+import Redacted from "./Redacted";
 
 // react-query key for the onboarding poll. Exported so the Skip button
 // and the Settings "Relaunch onboarding" control can invalidate it and
@@ -267,9 +268,13 @@ function TunnelModeBody({
         </div>
         {url ? (
           <div className="flex items-center gap-2">
-            <code className="flex-1 font-mono text-sm text-emerald-200 bg-emerald-950/30 border border-emerald-900/50 rounded px-3 py-2 break-all">
-              {url}
-            </code>
+            <div className="flex-1">
+              <Redacted persistent>
+                <code className="font-mono text-sm text-emerald-200 bg-emerald-950/30 border border-emerald-900/50 rounded px-3 py-2 break-all inline-block w-full">
+                  {url}
+                </code>
+              </Redacted>
+            </div>
             <button
               onClick={onCopy}
               className="shrink-0 text-xs px-3 py-2 rounded border border-white/15 bg-white/5 hover:bg-white/10 text-slate-200"
