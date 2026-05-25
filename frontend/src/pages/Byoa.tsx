@@ -542,7 +542,15 @@ export default function Byoa() {
         </Field>
 
         {/* Optional Helix post-step. Same machinery the verkada_helix_event
-            flow action uses — Workbench just chains it after the analyze. */}
+            flow action uses — Workbench just chains it after the analyze.
+            Hidden until the operator picks a prompt template (or types a
+            custom prompt) — there's nothing meaningful to log to Helix
+            until we know what the model is actually being asked. The
+            ``pickedTemplate``-driven effect above also auto-toggles the
+            Post switch + pre-selects the matching event type when a
+            Helix-paired prompt is chosen, so most operators never need
+            to touch the toggle manually. */}
+        {(pickedTemplate || (prompt.trim() !== "" && prompt !== DEFAULT_PROMPT)) && (
         <div className="border-t border-white/10 pt-4 space-y-3">
           <label className="flex items-center gap-2 cursor-pointer">
             <input
@@ -554,7 +562,9 @@ export default function Byoa() {
               Post result to Helix
             </span>
             <span className="text-[11px] text-slate-500">
-              chain a verkada_helix_event step after the analyze
+              {pickedTemplate?.helix_event_type
+                ? `auto-paired with ${pickedTemplate.helix_event_type.name}`
+                : "chain a verkada_helix_event step after the analyze"}
             </span>
           </label>
           {postToHelix && (
@@ -607,6 +617,7 @@ export default function Byoa() {
             </Row>
           )}
         </div>
+        )}
 
         {err && (
           <div className="text-sm text-rose-300 bg-rose-950/50 border border-rose-900 rounded px-3 py-2">
