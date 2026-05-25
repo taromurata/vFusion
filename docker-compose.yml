@@ -31,6 +31,18 @@ services:
       FERNET_KEY: ${FERNET_KEY:-}
       CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:15173}
       PUBLIC_WEBHOOK_BASE: ${PUBLIC_WEBHOOK_BASE:-}
+      # Force UTF-8 everywhere. python:3.x slim images default to the
+      # C/POSIX locale, which makes locale.getpreferredencoding()
+      # return 'ANSI_X3.4-1968' (ASCII). Any library that emits a
+      # log line / exception with non-ASCII chars (the google-genai
+      # upload path is one — a status indicator like a check-mark
+      # bombs the worker on encode) crashes the call. PYTHONUTF8=1
+      # is the canonical fix for Python 3.7+; LANG/LC_ALL backstop
+      # any subprocess or C-extension that reads the system locale.
+      PYTHONUTF8: "1"
+      PYTHONIOENCODING: utf-8
+      LANG: C.UTF-8
+      LC_ALL: C.UTF-8
     ports:
       - "18080:8000"
     depends_on:
@@ -55,6 +67,14 @@ services:
       DATABASE_URL: postgresql+asyncpg://verkada:verkada@postgres:5432/vfusion
       REDIS_URL: redis://redis:6379/0
       FERNET_KEY: ${FERNET_KEY:-}
+      # See backend service: forces UTF-8 throughout the worker
+      # process so Gemini SDK log lines / file-upload metadata with
+      # non-ASCII chars (status check-marks, etc.) don't blow up
+      # encode().
+      PYTHONUTF8: "1"
+      PYTHONIOENCODING: utf-8
+      LANG: C.UTF-8
+      LC_ALL: C.UTF-8
     depends_on:
       postgres:
         condition: service_healthy
