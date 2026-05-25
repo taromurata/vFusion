@@ -100,7 +100,12 @@ async def list_flow_templates(
                 "id": tpl["id"],
                 "source": "builtin",
                 "name": tpl.get("name", tpl["id"]),
-                "category": tpl.get("category"),
+                # ``category`` was the original single-bucket field. New
+                # templates declare ``tags`` (multi-tag list) instead;
+                # we keep ``category`` populated as the first tag for
+                # back-compat with anything still reading the old shape.
+                "category": tpl.get("category") or (tpl.get("tags") or [None])[0],
+                "tags": _normalize_tags(tpl.get("tags"), tpl.get("category")),
                 "description": tpl.get("description"),
                 "summary": tpl.get("summary"),
                 "trigger_type": tpl.get("flow", {}).get("trigger_type"),
@@ -113,12 +118,17 @@ async def list_flow_templates(
         )
     ).scalars().all()
     for row in rows:
+        # User templates only carry ``category`` today. Surface it as
+        # the sole tag so the UI render path doesn't have to special-
+        # case user vs builtin.
+        user_tags = _normalize_tags(None, row.category)
         out.append(
             {
                 "id": str(row.id),
                 "source": "user",
                 "name": row.name,
                 "category": row.category,
+                "tags": user_tags,
                 "description": row.description,
                 "summary": row.summary,
                 "trigger_type": (row.flow or {}).get("trigger_type"),
@@ -126,6 +136,36 @@ async def list_flow_templates(
                 "created_at": row.created_at.isoformat() if row.created_at else None,
             }
         )
+    return out
+
+
+def _normalize_tags(
+    tags: list[Any] | None, category: str | None
+) -> list[str]:
+    """Coerce the various tag-source fields into a clean list of
+    strings. Order is preserved; empties + non-strings are dropped;
+    duplicates collapse case-insensitively to their first occurrence.
+
+    Falls back to the legacy ``category`` field when no ``tags`` are
+    declared, so a template that hasn't been migrated still shows
+    *something* in the tag chip row.
+    """
+    raw: list[Any] = list(tags or [])
+    if not raw and category:
+        raw = [category]
+    seen: set[str] = set()
+    out: list[str] = []
+    for item in raw:
+        if not isinstance(item, str):
+            continue
+        s = item.strip()
+        if not s:
+            continue
+        key = s.lower()
+        if key in seen:
+            continue
+        seen.add(key)
+        out.append(s)
     return out
 
 

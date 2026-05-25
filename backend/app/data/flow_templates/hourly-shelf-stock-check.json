@@ -1,9 +1,8 @@
 {
   "id": "hourly-shelf-stock-check",
   "name": "Hourly shelf-stock check",
-  "category": "3rd Party Analytics",
-  "description": "No webhook source — run on a schedule. Every hour, pull a still frame from a retail camera, ask Gemini how full the shelf or rack is, and post the percentage to Helix so Verkada Command can alert floor staff when stock drops.",
-  "summary": "Hourly schedule → Gemini still-image analyze (JSON) → Helix event with Stock Level",
+  "description": "No webhook source \u2014 run on a schedule. Every hour, pull a still frame from a retail camera, ask Gemini how full the shelf or rack is, and post the percentage to Helix so Verkada Command can alert floor staff when stock drops.",
+  "summary": "Hourly schedule \u2192 Gemini still-image analyze (JSON) \u2192 Helix event with Stock Level",
   "default_name": "Hourly shelf-stock check",
   "flow": {
     "trigger_type": "schedule",
@@ -14,7 +13,7 @@
     "helix_event_types": [
       {
         "event_type_uid": "tpl:shelf-stock",
-        "name": "📦 Shelf Stock",
+        "name": "\ud83d\udce6 Shelf Stock",
         "event_schema": {
           "Stock Level": "integer",
           "Reasoning": "string"
@@ -35,7 +34,10 @@
           "model": "gemini-2.5-flash",
           "prompt": "Estimate how full the shelf, display, or clothing rack in this image is on a scale of 0-100, where 100 is fully stocked and 0 is empty.\n\nRespond with ONLY a JSON object - no prose, no code fence - with exactly two keys:\n  \"stock_level\": integer 0-100. Use your best estimate; do not pad with words like \"about\".\n  \"reasoning\":   one-sentence note on what you observed (which fixtures, what's missing), max 180 characters.\n\nExamples:\n  {\"stock_level\": 65, \"reasoning\": \"Bottom shelf about two-thirds full, top shelf nearly empty with visible gaps between SKUs.\"}\n  {\"stock_level\": 10, \"reasoning\": \"Only two items remaining on the entire rack, all in one corner.\"}\n  {\"stock_level\": 100, \"reasoning\": \"Fully stocked, no visible gaps anywhere on the display.\"}"
         },
-        "position": {"x": 220, "y": 0}
+        "position": {
+          "x": 220,
+          "y": 0
+        }
       },
       {
         "id": "post_helix",
@@ -53,11 +55,22 @@
           },
           "time_ms": "{{ trigger.fired_at }}000"
         },
-        "position": {"x": 220, "y": 240}
+        "position": {
+          "x": 220,
+          "y": 240
+        }
       }
     ],
     "edges": [
-      {"id": "e_analyze_post", "source": "analyze", "target": "post_helix"}
+      {
+        "id": "e_analyze_post",
+        "source": "analyze",
+        "target": "post_helix"
+      }
     ]
-  }
+  },
+  "tags": [
+    "Vision",
+    "Schedule"
+  ]
 }

@@ -197,7 +197,13 @@ export interface FlowTemplateListItem {
   // "user" = saved from the editor, lives in user_flow_templates table
   source: "builtin" | "user";
   name: string;
+  // Legacy single-bucket field. Preserved for back-compat; the
+  // Templates UI renders ``tags`` instead.
   category: string | null;
+  // Multi-tag taxonomy: e.g. ["Vision", "Webhook"] for an AI-on-motion
+  // template. Built-in templates declare this in their JSON; user
+  // templates fall back to ``[category]`` until they're migrated.
+  tags: string[];
   description: string | null;
   summary: string | null;
   trigger_type: string;

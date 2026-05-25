@@ -1,7 +1,6 @@
 {
   "id": "animal-detection-alerts",
   "name": "Animal detection alerts",
-  "category": "3rd Party Analytics",
   "description": "Catch motion events from a wildlife or outdoor camera, ask Gemini what animal is in the frame and what it's doing, and post the result to Helix so Verkada Command can alert when it sees a specific species (e.g. bear).",
   "summary": "Webhook -> Gemini analyze (JSON) -> condition on \"bear\" -> Helix event with Animal + Behavior",
   "default_name": "Animal detection alerts",
@@ -17,7 +16,7 @@
     "helix_event_types": [
       {
         "event_type_uid": "tpl:animal-watch",
-        "name": "🦌 Animal Watch",
+        "name": "\ud83e\udd8c Animal Watch",
         "event_schema": {
           "Animal": "string",
           "Behavior": "string"
@@ -41,7 +40,10 @@
           "model": "gemini-2.5-flash",
           "prompt": "Identify the animal in this security camera video and describe what it is doing. Respond with ONLY a JSON object - no prose, no code fence - with exactly two string keys:\n  \"animal\":   the species in lowercase (e.g. \"bear\", \"deer\", \"coyote\", \"raccoon\"), or \"none\" if no animal is clearly visible.\n  \"behavior\": a 1-4 word verb phrase describing what the animal is doing (e.g. \"walking\", \"feeding\", \"climbing fence\", \"investigating trash\"). Use \"unknown\" if the animal is too brief or unclear to tell.\n\nExample: {\"animal\": \"bear\", \"behavior\": \"walking\"}"
         },
-        "position": {"x": 220, "y": 0}
+        "position": {
+          "x": 220,
+          "y": 0
+        }
       },
       {
         "id": "is_bear",
@@ -53,7 +55,10 @@
           "operator": "contains",
           "right": "bear"
         },
-        "position": {"x": 220, "y": 220}
+        "position": {
+          "x": 220,
+          "y": 220
+        }
       },
       {
         "id": "post_helix",
@@ -71,12 +76,28 @@
           },
           "time_ms": "{{ trigger.data.created }}000"
         },
-        "position": {"x": 220, "y": 460}
+        "position": {
+          "x": 220,
+          "y": 460
+        }
       }
     ],
     "edges": [
-      {"id": "e_analyze_cond", "source": "analyze", "target": "is_bear"},
-      {"id": "e_cond_post", "source": "is_bear", "target": "post_helix", "branch": "true"}
+      {
+        "id": "e_analyze_cond",
+        "source": "analyze",
+        "target": "is_bear"
+      },
+      {
+        "id": "e_cond_post",
+        "source": "is_bear",
+        "target": "post_helix",
+        "branch": "true"
+      }
     ]
-  }
+  },
+  "tags": [
+    "Vision",
+    "Webhook"
+  ]
 }

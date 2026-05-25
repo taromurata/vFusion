@@ -1,9 +1,8 @@
 {
   "id": "ocr-triggered-unlock",
   "name": "OCR-triggered door unlock",
-  "category": "Access automation",
   "description": "Read text, signage, or license plates in front of a camera with Gemini and unlock a door when the OCR'd text matches a target string (a VIP plate, vendor name, employee badge code, etc.). Every match also gets logged to Helix as an OCR Match event so you have an audit trail of who/what got let in.",
-  "summary": "Motion webhook → Gemini OCR (JSON) → condition → unlock door + Helix log",
+  "summary": "Motion webhook \u2192 Gemini OCR (JSON) \u2192 condition \u2192 unlock door + Helix log",
   "default_name": "OCR-triggered door unlock",
   "flow": {
     "trigger_type": "verkada_webhook",
@@ -14,7 +13,7 @@
     "helix_event_types": [
       {
         "event_type_uid": "tpl:ocr-match",
-        "name": "🔓 OCR Match Unlock",
+        "name": "\ud83d\udd13 OCR Match Unlock",
         "event_schema": {
           "Match Value": "string",
           "Observed Text": "string",
@@ -36,7 +35,10 @@
           "model": "gemini-2.5-flash",
           "prompt": "Read every piece of legible text, signage, and license plates visible in this security camera frame.\n\nRespond with ONLY a JSON object - no prose, no code fence - with exactly two keys:\n  \"text\":     the full extracted text as a single string, multiple items separated by a pipe \"|\" character (e.g. \"FEDEX|7BCV928\"). Lowercase the text so downstream matching is case-insensitive. Use \"none\" when no text is legible.\n  \"has_text\": boolean, true when at least one piece of text was read, false otherwise.\n\nDo not invent characters. If you can't clearly read a character, leave it out. Skip generic stuff like brand watermarks on the camera UI itself.\n\nExamples:\n  {\"text\": \"fedex|7bcv928\", \"has_text\": true}\n  {\"text\": \"ups|conway construction\", \"has_text\": true}\n  {\"text\": \"none\", \"has_text\": false}"
         },
-        "position": {"x": 220, "y": 0}
+        "position": {
+          "x": 220,
+          "y": 0
+        }
       },
       {
         "id": "matches_target",
@@ -48,7 +50,10 @@
           "operator": "contains",
           "right": ""
         },
-        "position": {"x": 220, "y": 240}
+        "position": {
+          "x": 220,
+          "y": 240
+        }
       },
       {
         "id": "unlock",
@@ -60,7 +65,10 @@
           "connection_id": null,
           "door_id": ""
         },
-        "position": {"x": 0, "y": 480}
+        "position": {
+          "x": 0,
+          "y": 480
+        }
       },
       {
         "id": "log_match",
@@ -79,13 +87,35 @@
           },
           "time_ms": "{{ trigger.data.created }}000"
         },
-        "position": {"x": 440, "y": 480}
+        "position": {
+          "x": 440,
+          "y": 480
+        }
       }
     ],
     "edges": [
-      {"id": "e_ocr_cond", "source": "ocr", "target": "matches_target"},
-      {"id": "e_cond_unlock", "source": "matches_target", "target": "unlock", "branch": "true"},
-      {"id": "e_cond_log", "source": "matches_target", "target": "log_match", "branch": "true"}
+      {
+        "id": "e_ocr_cond",
+        "source": "ocr",
+        "target": "matches_target"
+      },
+      {
+        "id": "e_cond_unlock",
+        "source": "matches_target",
+        "target": "unlock",
+        "branch": "true"
+      },
+      {
+        "id": "e_cond_log",
+        "source": "matches_target",
+        "target": "log_match",
+        "branch": "true"
+      }
     ]
-  }
+  },
+  "tags": [
+    "Vision",
+    "Access control",
+    "Webhook"
+  ]
 }

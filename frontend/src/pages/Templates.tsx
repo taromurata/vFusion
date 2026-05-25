@@ -17,15 +17,19 @@ import {
 import HelixBootstrapModal from "../components/HelixBootstrapModal";
 
 
-// Display order for category headers. Categories not in this list fall
-// through to the end alphabetically so operator-saved templates always
-// have a home even if they pick a novel category name.
-const CATEGORY_ORDER: string[] = [
-  "3rd Party Analytics",
-  "Access automation",
-  "Scheduled",
-  "AI analytics", // legacy; absorbed by 3rd Party Analytics, kept for back-compat
-];
+// Curated tag colors. Templates whose tags aren't in this map fall back
+// to a neutral chip. New tag families can be added without touching
+// any other code — anything declared in template JSONs but not listed
+// here just gets the default styling.
+const TAG_STYLE: Record<string, string> = {
+  Vision: "bg-violet-900/60 text-violet-200 border-violet-800",
+  "Access control": "bg-rose-900/60 text-rose-200 border-rose-800",
+  Schedule: "bg-amber-900/60 text-amber-200 border-amber-800",
+  Webhook: "bg-sky-900/60 text-sky-200 border-sky-800",
+};
+
+const DEFAULT_TAG_STYLE =
+  "bg-slate-800 text-slate-300 border-slate-700";
 
 
 export default function Templates() {
@@ -129,39 +133,39 @@ function FlowTemplatesPanel() {
     );
   }
 
-  // Group templates by category so the page reads like a catalog
-  // instead of a flat dump. Categories sort by ``CATEGORY_ORDER`` first
-  // (so curated buckets like "3rd Party Analytics" lead the page), then
-  // alphabetically for anything novel. Built-in templates always come
-  // first within a category; user-saved templates land at the end.
-  const groups: { category: string; items: FlowTemplateListItem[] }[] = (() => {
-    const byCategory = new Map<string, FlowTemplateListItem[]>();
-    for (const t of list.data) {
-      const cat = t.category || "Other";
-      const arr = byCategory.get(cat) ?? [];
-      arr.push(t);
-      byCategory.set(cat, arr);
+  // Tag filter — empty Set means "show everything". When the operator
+  // clicks a tag chip in the filter bar we toggle membership; templates
+  // are visible only if they carry *every* selected tag (AND semantics),
+  // so two filters narrow the list together rather than expanding it.
+  const [activeTags, setActiveTags] = useState<Set<string>>(new Set());
+
+  // Collect every tag that appears on any template so the filter bar
+  // shows real options (not a hardcoded list that can drift from
+  // template JSONs). Sorted alphabetically for stable order.
+  const allTags = Array.from(
+    new Set(list.data.flatMap((t) => t.tags ?? [])),
+  ).sort();
+
+  const visible = list.data.filter((t) => {
+    if (activeTags.size === 0) return true;
+    const tagSet = new Set(t.tags ?? []);
+    for (const wanted of activeTags) {
+      if (!tagSet.has(wanted)) return false;
     }
-    const ordered: { category: string; items: FlowTemplateListItem[] }[] = [];
-    const seen = new Set<string>();
-    for (const cat of CATEGORY_ORDER) {
-      if (byCategory.has(cat)) {
-        ordered.push({ category: cat, items: byCategory.get(cat)! });
-        seen.add(cat);
-      }
-    }
-    for (const [cat, items] of Array.from(byCategory.entries()).sort((a, b) =>
-      a[0].localeCompare(b[0]),
-    )) {
-      if (!seen.has(cat)) {
-        ordered.push({ category: cat, items });
-      }
-    }
-    return ordered;
-  })();
+    return true;
+  });
+
+  const toggleTag = (tag: string) => {
+    setActiveTags((prev) => {
+      const next = new Set(prev);
+      if (next.has(tag)) next.delete(tag);
+      else next.add(tag);
+      return next;
+    });
+  };
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-4">
       <p className="text-xs text-slate-500 leading-relaxed">
         Each template creates a new flow pre-wired with the right trigger,
         actions, and conditions. Connections (Verkada org, Gemini key, Helix
@@ -172,69 +176,107 @@ function FlowTemplatesPanel() {
           {err}
         </div>
       )}
-      {groups.map((g) => (
-        <section key={g.category} className="space-y-3">
-          <h2 className="text-xs uppercase tracking-wider text-slate-400 font-semibold border-b border-white/10 pb-1.5">
-            {g.category}
-          </h2>
-          <div className="grid gap-3 sm:grid-cols-2">
-            {g.items.map((tpl) => (
-              <div
-                key={tpl.id}
-                className="bg-white/5 backdrop-blur-sm border border-white/15 rounded-lg p-4 flex flex-col gap-3"
+
+      {allTags.length > 0 && (
+        <div className="flex items-center gap-2 flex-wrap text-xs">
+          <span className="text-slate-500">Filter:</span>
+          {allTags.map((tag) => {
+            const active = activeTags.has(tag);
+            const baseStyle = TAG_STYLE[tag] ?? DEFAULT_TAG_STYLE;
+            return (
+              <button
+                key={tag}
+                type="button"
+                onClick={() => toggleTag(tag)}
+                className={`px-2 py-0.5 rounded border transition-opacity ${baseStyle} ${active ? "ring-2 ring-white/40" : "opacity-60 hover:opacity-100"}`}
               >
-                <div>
-                  <div className="flex items-center gap-2 flex-wrap">
-                    <div className="text-sm font-medium text-slate-100">
-                      {tpl.name}
-                    </div>
-                    <span className="text-[10px] uppercase tracking-wider px-1.5 py-0.5 rounded bg-slate-700/50 text-slate-300">
-                      {tpl.trigger_type === "schedule" ? "schedule" : "webhook"}
-                    </span>
-                    {tpl.source === "user" && (
-                      <span className="text-[10px] uppercase tracking-wider px-1.5 py-0.5 rounded bg-emerald-900/60 text-emerald-200">
-                        yours
-                      </span>
-                    )}
+                {tag}
+              </button>
+            );
+          })}
+          {activeTags.size > 0 && (
+            <button
+              type="button"
+              onClick={() => setActiveTags(new Set())}
+              className="text-slate-400 hover:text-slate-200 underline underline-offset-2 text-[11px]"
+            >
+              clear
+            </button>
+          )}
+        </div>
+      )}
+
+      {visible.length === 0 ? (
+        <div className="text-xs text-slate-500 italic py-4">
+          No templates match the selected tags. Clear filters to see everything.
+        </div>
+      ) : (
+        <div className="grid gap-3 sm:grid-cols-2">
+          {visible.map((tpl) => (
+            <div
+              key={tpl.id}
+              className="bg-white/5 backdrop-blur-sm border border-white/15 rounded-lg p-4 flex flex-col gap-3"
+            >
+              <div>
+                <div className="flex items-center gap-2 flex-wrap">
+                  <div className="text-sm font-medium text-slate-100">
+                    {tpl.name}
                   </div>
-                  {tpl.description && (
-                    <div className="text-[11px] text-slate-400 mt-1.5 leading-relaxed">
-                      {tpl.description}
-                    </div>
-                  )}
-                  {tpl.summary && (
-                    <div className="mt-2 text-[11px] font-mono text-slate-500 bg-slate-950/60 rounded px-2 py-1 border border-white/5">
-                      {tpl.summary}
-                    </div>
-                  )}
-                </div>
-                <div className="mt-auto flex items-center gap-2">
-                  <button
-                    onClick={() => useTemplate(tpl.id)}
-                    disabled={busyId !== null}
-                    className="text-xs px-3 py-1.5 rounded bg-sky-700 hover:bg-sky-600 text-white disabled:opacity-50"
-                  >
-                    {busyId === tpl.id ? "Creating…" : "Use this template"}
-                  </button>
                   {tpl.source === "user" && (
-                    <button
-                      onClick={() => {
-                        if (confirm(`Delete template "${tpl.name}"?`)) {
-                          deleteTemplate.mutate(tpl.id);
-                        }
-                      }}
-                      disabled={deleteTemplate.isPending}
-                      className="text-xs px-2 py-1.5 rounded border border-white/15 text-slate-300 hover:text-rose-300 hover:border-rose-700 disabled:opacity-50"
-                    >
-                      Delete
-                    </button>
+                    <span className="text-[10px] uppercase tracking-wider px-1.5 py-0.5 rounded bg-emerald-900/60 text-emerald-200">
+                      yours
+                    </span>
                   )}
                 </div>
+                {(tpl.tags?.length ?? 0) > 0 && (
+                  <div className="flex items-center gap-1 flex-wrap mt-2">
+                    {tpl.tags.map((tag) => (
+                      <span
+                        key={tag}
+                        className={`text-[10px] px-1.5 py-0.5 rounded border ${TAG_STYLE[tag] ?? DEFAULT_TAG_STYLE}`}
+                      >
+                        {tag}
+                      </span>
+                    ))}
+                  </div>
+                )}
+                {tpl.description && (
+                  <div className="text-[11px] text-slate-400 mt-2 leading-relaxed">
+                    {tpl.description}
+                  </div>
+                )}
+                {tpl.summary && (
+                  <div className="mt-2 text-[11px] font-mono text-slate-500 bg-slate-950/60 rounded px-2 py-1 border border-white/5">
+                    {tpl.summary}
+                  </div>
+                )}
               </div>
-            ))}
-          </div>
-        </section>
-      ))}
+              <div className="mt-auto flex items-center gap-2">
+                <button
+                  onClick={() => useTemplate(tpl.id)}
+                  disabled={busyId !== null}
+                  className="text-xs px-3 py-1.5 rounded bg-sky-700 hover:bg-sky-600 text-white disabled:opacity-50"
+                >
+                  {busyId === tpl.id ? "Creating…" : "Use this template"}
+                </button>
+                {tpl.source === "user" && (
+                  <button
+                    onClick={() => {
+                      if (confirm(`Delete template "${tpl.name}"?`)) {
+                        deleteTemplate.mutate(tpl.id);
+                      }
+                    }}
+                    disabled={deleteTemplate.isPending}
+                    className="text-xs px-2 py-1.5 rounded border border-white/15 text-slate-300 hover:text-rose-300 hover:border-rose-700 disabled:opacity-50"
+                  >
+                    Delete
+                  </button>
+                )}
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
 
       {pendingApply && (
         <HelixBootstrapModal

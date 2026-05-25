@@ -1,9 +1,8 @@
 {
   "id": "weather-sentry",
   "name": "Weather sentry",
-  "category": "3rd Party Analytics",
-  "description": "Schedule pulls a still from an outdoor camera (parking lot, yard, perimeter) and asks Gemini to judge current conditions and visibility. Posts to Helix so ops teams can alert on developing hazards — heavy rain, fog rolling in, snow accumulation — without paying for a weather service or running a separate sensor stack.",
-  "summary": "Schedule every 30 min → Gemini still-image (JSON) → Helix weather event",
+  "description": "Schedule pulls a still from an outdoor camera (parking lot, yard, perimeter) and asks Gemini to judge current conditions and visibility. Posts to Helix so ops teams can alert on developing hazards \u2014 heavy rain, fog rolling in, snow accumulation \u2014 without paying for a weather service or running a separate sensor stack.",
+  "summary": "Schedule every 30 min \u2192 Gemini still-image (JSON) \u2192 Helix weather event",
   "default_name": "Weather sentry",
   "flow": {
     "trigger_type": "schedule",
@@ -14,7 +13,7 @@
     "helix_event_types": [
       {
         "event_type_uid": "tpl:weather",
-        "name": "☁️ Weather",
+        "name": "\u2601\ufe0f Weather",
         "event_schema": {
           "Conditions": "string",
           "Visibility": "string",
@@ -36,7 +35,10 @@
           "model": "gemini-2.5-flash",
           "prompt": "You are judging weather conditions from an outdoor security camera frame. Look at the sky, ground, surfaces, and atmosphere.\n\nRespond with ONLY a JSON object - no prose, no code fence - with exactly three keys:\n  \"conditions\": one of \"clear\", \"cloudy\", \"overcast\", \"rain\", \"snow\", \"fog\", \"storm\", or \"unknown\". Pick the dominant condition. Use \"unknown\" if the camera is indoors / blocked / nighttime with no visual signal.\n  \"visibility\": one of \"good\" (you can see across the frame normally), \"reduced\" (haze / light rain / partial fog), \"poor\" (heavy precipitation / dense fog / sub-100ft visibility).\n  \"hazards\":    short comma-separated string of active hazards you observe (e.g. \"ice on pavement, snow accumulation, standing water, blowing debris\"), or \"none\" when nothing notable.\n\nDo not infer beyond what's visible:\n  - Don't predict (no \"looks like it might rain\").\n  - Don't quote temperatures or wind speed - you don't have sensors.\n  - Nighttime with clear sky should be \"clear\" + \"good\" visibility, NOT \"unknown\".\n\nExamples:\n  {\"conditions\": \"clear\", \"visibility\": \"good\", \"reasoning_omit\": null, \"hazards\": \"none\"}\n  {\"conditions\": \"snow\", \"visibility\": \"reduced\", \"hazards\": \"snow accumulation on driveway, slippery surface likely\"}\n  {\"conditions\": \"fog\", \"visibility\": \"poor\", \"hazards\": \"dense fog, vehicles barely visible 30 feet out\"}\n  {\"conditions\": \"rain\", \"visibility\": \"reduced\", \"hazards\": \"standing water near loading dock\"}"
         },
-        "position": {"x": 220, "y": 0}
+        "position": {
+          "x": 220,
+          "y": 0
+        }
       },
       {
         "id": "post_helix",
@@ -55,11 +57,22 @@
           },
           "time_ms": "{{ trigger.fired_at }}000"
         },
-        "position": {"x": 220, "y": 240}
+        "position": {
+          "x": 220,
+          "y": 240
+        }
       }
     ],
     "edges": [
-      {"id": "e_observe_post", "source": "observe", "target": "post_helix"}
+      {
+        "id": "e_observe_post",
+        "source": "observe",
+        "target": "post_helix"
+      }
     ]
-  }
+  },
+  "tags": [
+    "Vision",
+    "Schedule"
+  ]
 }

@@ -1,9 +1,8 @@
 {
   "id": "ai-activity-log",
   "name": "AI activity log (every motion event)",
-  "category": "3rd Party Analytics",
-  "description": "On every motion event from a camera, Gemini watches the clip and writes a structured one-line incident summary to Helix. Turns a noisy motion feed into a searchable activity timeline in Verkada Command — \"show me everything that happened at the loading dock last night\" goes from scrubbing 8 hours of footage to filtering a Helix event list.",
-  "summary": "Motion webhook → Gemini analyze video (JSON) → Helix activity-log event",
+  "description": "On every motion event from a camera, Gemini watches the clip and writes a structured one-line incident summary to Helix. Turns a noisy motion feed into a searchable activity timeline in Verkada Command \u2014 \"show me everything that happened at the loading dock last night\" goes from scrubbing 8 hours of footage to filtering a Helix event list.",
+  "summary": "Motion webhook \u2192 Gemini analyze video (JSON) \u2192 Helix activity-log event",
   "default_name": "AI activity log",
   "flow": {
     "trigger_type": "verkada_webhook",
@@ -14,7 +13,7 @@
     "helix_event_types": [
       {
         "event_type_uid": "tpl:activity-log",
-        "name": "📹 Activity Log",
+        "name": "\ud83d\udcf9 Activity Log",
         "event_schema": {
           "Summary": "string",
           "Subject Type": "string",
@@ -37,9 +36,12 @@
           "duration_sec": "10",
           "pre_roll_sec": "2",
           "model": "gemini-2.5-flash",
-          "prompt": "Watch this short security camera clip and produce a structured activity log entry. Focus on what's actually happening, not just what's visible — the goal is a searchable record an operator can scan months later.\n\nRespond with ONLY a JSON object - no prose, no code fence - with exactly three keys:\n  \"subject_type\": one of \"person\", \"vehicle\", \"animal\", \"object\", or \"none\". When multiple are present, pick the most prominent. Use \"none\" if the clip is empty / scenery only.\n  \"activity\":     a 1-4 word verb phrase describing what the subject is doing (e.g. \"walking past\", \"loading truck\", \"climbing fence\", \"investigating door\", \"driving by\"). Use \"present\" if just standing still. Use \"none\" if subject_type is \"none\".\n  \"summary\":      one sentence describing the event for the activity log, max 180 characters. Lead with the subject and what it did. No filler like \"this video shows\" - just the facts.\n\nDo not invent details that aren't visible. If the clip is unclear or dark, say so in the summary and use \"low\" confidence wording.\n\nExamples:\n  {\"subject_type\": \"person\", \"activity\": \"walking past\", \"summary\": \"Adult in dark jacket walked east-to-west across the loading dock, no interaction with cargo.\"}\n  {\"subject_type\": \"vehicle\", \"activity\": \"backing in\", \"summary\": \"White van backed into bay 3 and a driver exited the cab, no visible signage.\"}\n  {\"subject_type\": \"none\", \"activity\": \"none\", \"summary\": \"Wind-blown debris triggered motion - empty driveway, no person or vehicle present.\"}"
+          "prompt": "Watch this short security camera clip and produce a structured activity log entry. Focus on what's actually happening, not just what's visible \u2014 the goal is a searchable record an operator can scan months later.\n\nRespond with ONLY a JSON object - no prose, no code fence - with exactly three keys:\n  \"subject_type\": one of \"person\", \"vehicle\", \"animal\", \"object\", or \"none\". When multiple are present, pick the most prominent. Use \"none\" if the clip is empty / scenery only.\n  \"activity\":     a 1-4 word verb phrase describing what the subject is doing (e.g. \"walking past\", \"loading truck\", \"climbing fence\", \"investigating door\", \"driving by\"). Use \"present\" if just standing still. Use \"none\" if subject_type is \"none\".\n  \"summary\":      one sentence describing the event for the activity log, max 180 characters. Lead with the subject and what it did. No filler like \"this video shows\" - just the facts.\n\nDo not invent details that aren't visible. If the clip is unclear or dark, say so in the summary and use \"low\" confidence wording.\n\nExamples:\n  {\"subject_type\": \"person\", \"activity\": \"walking past\", \"summary\": \"Adult in dark jacket walked east-to-west across the loading dock, no interaction with cargo.\"}\n  {\"subject_type\": \"vehicle\", \"activity\": \"backing in\", \"summary\": \"White van backed into bay 3 and a driver exited the cab, no visible signage.\"}\n  {\"subject_type\": \"none\", \"activity\": \"none\", \"summary\": \"Wind-blown debris triggered motion - empty driveway, no person or vehicle present.\"}"
         },
-        "position": {"x": 220, "y": 0}
+        "position": {
+          "x": 220,
+          "y": 0
+        }
       },
       {
         "id": "post_helix",
@@ -58,11 +60,22 @@
           },
           "time_ms": "{{ trigger.data.created }}000"
         },
-        "position": {"x": 220, "y": 240}
+        "position": {
+          "x": 220,
+          "y": 240
+        }
       }
     ],
     "edges": [
-      {"id": "e_describe_post", "source": "describe", "target": "post_helix"}
+      {
+        "id": "e_describe_post",
+        "source": "describe",
+        "target": "post_helix"
+      }
     ]
-  }
+  },
+  "tags": [
+    "Vision",
+    "Webhook"
+  ]
 }

@@ -1,9 +1,8 @@
 {
   "id": "camera-fov-health-check",
   "name": "Camera FOV health check",
-  "category": "3rd Party Analytics",
   "description": "Daily sanity check that a camera is actually doing its job. Pulls a still from one camera, asks Gemini whether the view is impaired (obstructed, blurry, mis-aimed at a wall, dirty lens) and posts a Helix event whenever something looks wrong so maintenance can investigate. Pick the camera and adjust the schedule before enabling. Clone the flow per camera for coverage of more than one.",
-  "summary": "Daily schedule → Gemini still-image (JSON) → condition → Helix event when impaired",
+  "summary": "Daily schedule \u2192 Gemini still-image (JSON) \u2192 condition \u2192 Helix event when impaired",
   "default_name": "Camera FOV health check",
   "flow": {
     "trigger_type": "schedule",
@@ -15,7 +14,7 @@
     "helix_event_types": [
       {
         "event_type_uid": "tpl:camera-health",
-        "name": "🩺 Camera Health",
+        "name": "\ud83e\ude7a Camera Health",
         "event_schema": {
           "Issue": "string",
           "Severity": "string",
@@ -37,7 +36,10 @@
           "model": "gemini-2.5-flash",
           "prompt": "You are auditing a security camera frame for image-quality / mounting issues. Decide whether this camera appears to be doing its job, OR whether the lens / mounting is impaired in a way a maintenance technician should investigate.\n\nRespond with ONLY a JSON object - no prose, no code fence - with exactly four keys:\n  \"status\":   \"ok\" if the image looks like a normal working security camera view; \"issue\" if the camera itself appears impaired.\n  \"issue\":    when status is \"issue\", one of: \"obstructed\" (lens covered), \"blurry\" (severely out of focus), \"mis_aimed\" (pointed at a wall / ceiling / floor as if knocked), \"dirty_lens\" (smears, water, fog), \"dark\" (uniformly black/white in a way IR / exposure can't explain), \"scene_drift\" (view doesn't look like a security cam should see). Use null when status is \"ok\".\n  \"severity\": \"low\" / \"medium\" / \"high\". Use null when status is \"ok\".\n  \"reasoning\": one-sentence explanation, max 180 characters.\n\nDO NOT flag legitimate situations:\n  - A dark scene at night is fine (working IR cameras are dark).\n  - An empty hallway, parking lot, loading dock, or wall corner is fine if it appears to be the intended view.\n  - Slight motion blur, compression artifacts, or wide-angle distortion in an otherwise normal frame.\n  - Privacy-masked regions (solid gray / black rectangles in part of the frame) - those are intentional.\n  - Glare, sun flare, or backlit scenes if the rest is intelligible.\n\nDO flag:\n  - Lens physically covered, sprayed, or fogged so the scene is unintelligible.\n  - Camera so out of focus the scene can't be identified.\n  - Camera knocked out of alignment and now pointing at a wall, ceiling, or floor.\n  - Entire frame is a single flat color suggesting covered lens or broken sensor.\n\nExamples:\n  {\"status\": \"issue\", \"issue\": \"obstructed\", \"severity\": \"high\", \"reasoning\": \"Lens covered by fabric or paper - no scene visible.\"}\n  {\"status\": \"issue\", \"issue\": \"mis_aimed\", \"severity\": \"medium\", \"reasoning\": \"Camera appears to be pointing at a ceiling tile rather than the corridor.\"}\n  {\"status\": \"ok\", \"issue\": null, \"severity\": null, \"reasoning\": \"Normal parking lot view, daytime, clear focus.\"}"
         },
-        "position": {"x": 220, "y": 0}
+        "position": {
+          "x": 220,
+          "y": 0
+        }
       },
       {
         "id": "has_issue",
@@ -49,7 +51,10 @@
           "operator": "equals",
           "right": "issue"
         },
-        "position": {"x": 220, "y": 240}
+        "position": {
+          "x": 220,
+          "y": 240
+        }
       },
       {
         "id": "post_helix",
@@ -68,12 +73,28 @@
           },
           "time_ms": "{{ trigger.fired_at }}000"
         },
-        "position": {"x": 220, "y": 480}
+        "position": {
+          "x": 220,
+          "y": 480
+        }
       }
     ],
     "edges": [
-      {"id": "e_analyze_cond", "source": "analyze", "target": "has_issue"},
-      {"id": "e_cond_post", "source": "has_issue", "target": "post_helix", "branch": "true"}
+      {
+        "id": "e_analyze_cond",
+        "source": "analyze",
+        "target": "has_issue"
+      },
+      {
+        "id": "e_cond_post",
+        "source": "has_issue",
+        "target": "post_helix",
+        "branch": "true"
+      }
     ]
-  }
+  },
+  "tags": [
+    "Vision",
+    "Schedule"
+  ]
 }
