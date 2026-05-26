@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
 
@@ -166,6 +166,15 @@ function RunDetailView({ run }: { run: RunDetail }) {
     bucket.push(e);
     eventsByStep.set(e.step_name, bucket);
   }
+  // Reset the detail pane's scroll position when the selected run
+  // changes. Without this, navigating in from BYOA's "Brew it" or
+  // clicking a different run keeps whatever scroll position the
+  // previous run left behind — the operator lands midway through
+  // a run and has to scroll up to see the header.
+  const scrollRef = useRef<HTMLDivElement | null>(null);
+  useEffect(() => {
+    if (scrollRef.current) scrollRef.current.scrollTop = 0;
+  }, [run.id]);
   return (
     <div className="h-full flex flex-col">
       <div className="px-4 py-3 border-b border-slate-800">
@@ -233,7 +242,7 @@ function RunDetailView({ run }: { run: RunDetail }) {
         </div>
       </div>
 
-      <div className="flex-1 overflow-auto p-4 space-y-4">
+      <div ref={scrollRef} className="flex-1 overflow-auto p-4 space-y-4">
         {/* Lift the captured clip/still to a run-level preview so it
             shows regardless of which step the operator has expanded.
             For a typical Gemini-analyze flow the asset is in step 1's
