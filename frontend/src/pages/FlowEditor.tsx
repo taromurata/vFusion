@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom";
 import {
@@ -466,6 +466,55 @@ function FlowEditorInner() {
       setSelected({ kind: "trigger" });
   };
 
+  // Discover which Verkada connection (if any) this flow has
+  // already committed to. We scan every node's config for fields the
+  // action spec declares as ``connection_ref`` + ``connection_type:
+  // "verkada"`` and collect the resolved ids. If exactly one shows
+  // up the flow is "locked" to that connection — downstream pickers
+  // filter to it and auto-fill from it. If two show up we still
+  // pick the first as the lock (so freshly-added steps don't pile
+  // on a third org) and surface the mismatch in a banner.
+  const lockedVerkadaConnectionId = useMemo<string | null>(() => {
+    const specs = actionSpecs.data;
+    if (!specs) return null;
+    const ids: string[] = [];
+    for (const n of nodes) {
+      if (n.kind !== "action" || !n.action_type) continue;
+      const spec = specs[n.action_type];
+      if (!spec) continue;
+      for (const f of spec.schema.fields) {
+        if (f.type !== "connection_ref") continue;
+        if (f.connection_type !== "verkada") continue;
+        const v = (n.config as Record<string, unknown>)[f.name];
+        if (typeof v === "string" && v) ids.push(v);
+      }
+    }
+    return ids[0] ?? null;
+  }, [nodes, actionSpecs.data]);
+
+  // True if any node's Verkada connection picker disagrees with the
+  // lock. We surface this as a banner so the operator notices before
+  // the flow runs and posts events into the wrong org.
+  const verkadaConnectionMismatch = useMemo<boolean>(() => {
+    if (!lockedVerkadaConnectionId) return false;
+    const specs = actionSpecs.data;
+    if (!specs) return false;
+    for (const n of nodes) {
+      if (n.kind !== "action" || !n.action_type) continue;
+      const spec = specs[n.action_type];
+      if (!spec) continue;
+      for (const f of spec.schema.fields) {
+        if (f.type !== "connection_ref") continue;
+        if (f.connection_type !== "verkada") continue;
+        const v = (n.config as Record<string, unknown>)[f.name];
+        if (typeof v === "string" && v && v !== lockedVerkadaConnectionId) {
+          return true;
+        }
+      }
+    }
+    return false;
+  }, [nodes, actionSpecs.data, lockedVerkadaConnectionId]);
+
   // Auto-layout positions for nodes that don't have a persisted position.
   // User-dragged nodes (node.position set) win — that's the snapping lock.
   const layout = computeLayout(nodes, edges);
@@ -909,6 +958,17 @@ function FlowEditorInner() {
 
       <div className="flex-1 flex min-h-0">
         <div className="flex-1 relative min-h-0">
+          {verkadaConnectionMismatch && (
+            // Cross-org flow alarm. Absolutely-positioned over the
+            // canvas so it doesn't steal layout — operator can dismiss
+            // it by fixing the mismatched picker.
+            <div className="absolute top-2 left-1/2 -translate-x-1/2 z-10 px-3 py-2 rounded-md border border-rose-700/70 bg-rose-950/80 text-rose-100 text-xs max-w-md text-center shadow-lg">
+              ⚠ This flow has steps pointing at different Verkada
+              connections. A flow should stay inside one org —
+              re-pick the offending step's connection so events
+              don't get split between orgs.
+            </div>
+          )}
           <ReactFlow
             nodes={rfNodes}
             edges={[...triggerEdges, ...rfEdges]}
@@ -1046,6 +1106,7 @@ function FlowEditorInner() {
               <NodeEditor
                 node={selectedNode}
                 allSpecs={actionSpecs.data ?? {}}
+                lockedVerkadaConnectionId={lockedVerkadaConnectionId}
                 triggerFamily={trigger.family}
                 triggerNotificationType={trigger.notificationType}
                 flowId={isNew ? null : (flowId ?? null)}
@@ -1334,6 +1395,7 @@ function NodeEditor({
   flowId,
   flowSaved,
   sampleOutput,
+  lockedVerkadaConnectionId,
 }: {
   node: FlowNode;
   allSpecs: Record<string, ActionSpec>;
@@ -1348,6 +1410,7 @@ function NodeEditor({
   flowId: string | null;
   flowSaved: boolean;
   sampleOutput?: unknown;
+  lockedVerkadaConnectionId?: string | null;
 }) {
   const isCondition = node.kind === "condition";
   const spec = isCondition ? allSpecs._condition : allSpecs[node.action_type ?? ""];
@@ -1432,6 +1495,7 @@ function NodeEditor({
           operators={spec.operators ?? []}
           currentStepName={node.name}
           onAddPairedHelixStep={onAddPairedHelixStep}
+          lockedVerkadaConnectionId={lockedVerkadaConnectionId}
         />
       )}
 

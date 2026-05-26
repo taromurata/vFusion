@@ -58,6 +58,16 @@ interface Props {
    * brand-new unsaved node).
    */
   currentStepName?: string;
+  /**
+   * If any other node in the flow has already picked a Verkada
+   * connection, the FlowEditor passes its id here. We use it to
+   * (a) lock every verkada-type connection_ref picker to that one
+   * id and (b) auto-fill empty pickers so the operator doesn't
+   * have to repeat themselves. A flow that spans two Verkada orgs
+   * would post to one org's Helix from the other org's camera —
+   * almost always a bug.
+   */
+  lockedVerkadaConnectionId?: string | null;
 }
 
 /** Renders one action step's config form based on its ActionSpec schema. */
@@ -71,6 +81,7 @@ export default function StepConfigForm({
   operators = [],
   onAddPairedHelixStep,
   currentStepName,
+  lockedVerkadaConnectionId,
 }: Props) {
   const connections = useQuery({
     queryKey: ["connections"],
@@ -163,11 +174,24 @@ export default function StepConfigForm({
 
       if (f.type === "connection_ref") {
         if (conns.length === 0) continue;
-        const match = conns.find(
-          (c) =>
-            (!f.connection_type || c.type === f.connection_type) &&
-            c.setup_complete,
-        );
+        // If another node in this flow has already locked a Verkada
+        // connection, prefer that one for any verkada-type picker —
+        // even if there are multiple Verkada connections available.
+        // Keeps the flow inside a single org without making the
+        // operator click through twice.
+        const lockedFirst =
+          f.connection_type === "verkada" &&
+          lockedVerkadaConnectionId &&
+          conns.find(
+            (c) => c.id === lockedVerkadaConnectionId && c.setup_complete,
+          );
+        const match =
+          lockedFirst ||
+          conns.find(
+            (c) =>
+              (!f.connection_type || c.type === f.connection_type) &&
+              c.setup_complete,
+          );
         if (match) {
           autofilledRef.current.add(key);
           patched = { ...(patched ?? config), [f.name]: match.id };
@@ -257,6 +281,7 @@ export default function StepConfigForm({
           operators,
           onAddPairedHelixStep,
           currentStepName,
+          lockedVerkadaConnectionId,
         )}
       </Field>
     );
@@ -295,24 +320,48 @@ function renderControl(
   operators: string[],
   onAddPairedHelixStep: Props["onAddPairedHelixStep"],
   currentStepName: Props["currentStepName"],
+  lockedVerkadaConnectionId: Props["lockedVerkadaConnectionId"],
 ): JSX.Element {
   if (f.type === "connection_ref") {
+    // Lock verkada-type pickers to the flow's existing Verkada
+    // connection when one is set elsewhere. A flow that spans two
+    // Verkada orgs is almost always a mistake — the Helix post lands
+    // in org B while the camera lives in org A, and nothing
+    // downstream can recover. We still allow the locked id itself
+    // to render (so the operator sees what's selected) plus the
+    // current value (in case it's a stale unmigrated config).
+    const isVerkada = f.connection_type === "verkada";
+    const currentValue = (config[f.name] as string) ?? "";
+    const lockActive = isVerkada && !!lockedVerkadaConnectionId;
+    const filtered = connections.filter((c) => {
+      if (f.connection_type && c.type !== f.connection_type) return false;
+      if (lockActive) {
+        return c.id === lockedVerkadaConnectionId || c.id === currentValue;
+      }
+      return true;
+    });
     return (
-      <select
-        value={(config[f.name] as string) ?? ""}
-        onChange={(e) => setOne(f.name, e.target.value)}
-        className="w-full px-2 py-1.5 rounded bg-white/5 border border-white/15 text-sm"
-      >
-        <option value="">— pick a connection —</option>
-        {connections
-          .filter((c) => !f.connection_type || c.type === f.connection_type)
-          .map((c) => (
+      <>
+        <select
+          value={currentValue}
+          onChange={(e) => setOne(f.name, e.target.value)}
+          className="w-full px-2 py-1.5 rounded bg-white/5 border border-white/15 text-sm"
+        >
+          <option value="">— pick a connection —</option>
+          {filtered.map((c) => (
             <option key={c.id} value={c.id}>
               {c.name}
               {!c.setup_complete ? " (needs api key!)" : ""}
             </option>
           ))}
-      </select>
+        </select>
+        {lockActive && (
+          <div className="text-[11px] text-slate-500 mt-1">
+            Locked to this flow's Verkada org. Other Verkada connections
+            are hidden so a single flow can't straddle two orgs.
+          </div>
+        )}
+      </>
     );
   }
   if (f.type === "door_ref") {
