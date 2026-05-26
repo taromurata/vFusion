@@ -80,17 +80,28 @@ function FlowTemplatesPanel() {
     { id: string; defs: HelixEventTypeDef[] } | null
   >(null);
 
-  const finalizeApply = async (id: string, uidMap: Record<string, string>) => {
+  const finalizeApply = async (
+    id: string,
+    uidMap: Record<string, string>,
+    verkadaConnectionId: string,
+  ) => {
     setBusyId(id);
     setErr(null);
     try {
-      // apply strips positions + auto-rebinds obvious connection slots
-      // server-side, so the frontend stays a thin shell. Imported /
-      // template-applied flows start disabled — the user reviews +
-      // enables once they've wired everything up.
+      // apply strips positions + auto-rebinds connection slots
+      // server-side. We forward the Verkada connection the operator
+      // picked in the bootstrap modal so every verkada-typed
+      // connection_id in the template is wired to *that* org rather
+      // than left null (or, on a deploy with one Verkada conn,
+      // silently rebound to it). Imported / template-applied flows
+      // start disabled — the user reviews + enables once they've
+      // wired everything up.
       const created = await apiPost<{ id: string }>(
         `/api/flow-templates/${id}/apply`,
-        { helix_uid_map: uidMap },
+        {
+          helix_uid_map: uidMap,
+          verkada_connection_id: verkadaConnectionId || null,
+        },
       );
       navigate(`/flows/${created.id}/edit`);
     } catch (e) {
@@ -121,7 +132,13 @@ function FlowTemplatesPanel() {
       // surface a clearer message if anything's actually broken.
       console.warn("template detail fetch failed; applying without bootstrap", e);
     }
-    await finalizeApply(id, {});
+    // No-bootstrap fallback path — template doesn't ship Helix defs
+    // (or the peek lookup blew up). We can't ask the operator to
+    // pick a Verkada connection without the modal, so pass "" and
+    // let the backend fall back to the legacy single-connection
+    // heuristic. Multi-connection deploys see a null slot; same
+    // behavior as before this fix.
+    await finalizeApply(id, {}, "");
   };
 
   const deleteTemplate = useMutation({
@@ -304,7 +321,9 @@ function FlowTemplatesPanel() {
           defs={pendingApply.defs}
           intent="apply"
           onCancel={() => setPendingApply(null)}
-          onConfirm={(uidMap) => finalizeApply(pendingApply.id, uidMap)}
+          onConfirm={(uidMap, connId) =>
+            finalizeApply(pendingApply.id, uidMap, connId)
+          }
         />
       )}
     </div>

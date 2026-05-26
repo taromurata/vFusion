@@ -1066,6 +1066,10 @@ function FlowEditorInner() {
               intent="insert"
               onCancel={() => setPendingPairedHelix(null)}
               onConfirm={(uidMap) => {
+                // Inserting a Helix step into an already-open flow —
+                // the operator picks the Verkada connection on the
+                // new step config form, so we don't need the modal's
+                // connId here.
                 insertPairedHelixStep(
                   pendingPairedHelix.def,
                   pendingPairedHelix.mapping,

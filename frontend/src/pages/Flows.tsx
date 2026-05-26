@@ -241,8 +241,15 @@ export default function Flows() {
         <HelixBootstrapModal
           defs={pendingImport.helix_event_types ?? []}
           onCancel={() => setPendingImport(null)}
-          onConfirm={(uidMap) =>
-            importMut.mutate({ ...pendingImport, helix_uid_map: uidMap })
+          onConfirm={(uidMap, connId) =>
+            importMut.mutate({
+              ...pendingImport,
+              helix_uid_map: uidMap,
+              // Forward the operator's chosen Verkada connection so
+              // /api/flows/import rebinds every verkada_connection_id
+              // slot to it instead of leaving them null.
+              verkada_connection_id: connId || null,
+            })
           }
         />
       )}

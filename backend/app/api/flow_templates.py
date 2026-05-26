@@ -373,27 +373,37 @@ async def delete_user_template(
 # ---------------------------------------------------------------------------
 
 async def _rebind_connections(
-    nodes: list[dict[str, Any]], session: AsyncSession
+    nodes: list[dict[str, Any]],
+    session: AsyncSession,
+    verkada_override: str | None = None,
 ) -> list[dict[str, Any]]:
     """For each null ``connection_id`` / ``gemini_connection_id`` slot,
-    pre-fill it when the deploy has exactly one matching connection.
+    pre-fill it.
 
-    Multiple-of-a-type means we don't guess — the operator picks. Zero
-    of a type leaves the slot null. Same approach for both template
-    apply and JSON import: the operator's first edit is wiring up
-    anything still empty.
+    Verkada slots use ``verkada_override`` when supplied (the
+    connection the operator picked in the bootstrap modal). Without
+    an override we fall back to the legacy "exactly one matching
+    connection" heuristic — multiple Verkada connections + no
+    override leaves the slot null and the operator picks by hand.
+
+    Gemini slots use the legacy heuristic only; the bootstrap modal
+    is Helix-scoped so it doesn't ask about Gemini.
     """
-    verkada = (
-        await session.execute(
-            select(Connection).where(Connection.type == "verkada")
-        )
-    ).scalars().all()
+    verkada_id: str | None = None
+    if verkada_override:
+        verkada_id = verkada_override
+    else:
+        verkada = (
+            await session.execute(
+                select(Connection).where(Connection.type == "verkada")
+            )
+        ).scalars().all()
+        verkada_id = str(verkada[0].id) if len(verkada) == 1 else None
     gemini = (
         await session.execute(
             select(Connection).where(Connection.type == "gemini")
         )
     ).scalars().all()
-    verkada_id = str(verkada[0].id) if len(verkada) == 1 else None
     gemini_id = str(gemini[0].id) if len(gemini) == 1 else None
     if not verkada_id and not gemini_id:
         return nodes
@@ -424,6 +434,13 @@ class ApplyTemplateBody(BaseModel):
     """
 
     helix_uid_map: dict[str, str] = Field(default_factory=dict)
+    # The Verkada connection the operator picked in the bootstrap
+    # modal. When present, every null verkada_connection_id slot in
+    # the template gets wired to it — otherwise we fall back to the
+    # legacy "exactly one Verkada connection" heuristic, which on a
+    # multi-org deploy leaves the slot null and confuses operators
+    # who thought they had already picked one.
+    verkada_connection_id: str | None = None
 
 
 @router.post("/{template_id}/apply")
@@ -448,6 +465,7 @@ async def apply_flow_template(
     from app.api.flows import _rewrite_helix_uids_in_nodes
 
     uid_map = (body.helix_uid_map if body is not None else None) or {}
+    verkada_override = body.verkada_connection_id if body is not None else None
     tpl = await _resolve_template(template_id, session)
     flow = tpl.get("flow") or {}
     nodes_in = flow.get("nodes") or []
@@ -457,7 +475,9 @@ async def apply_flow_template(
     ]
     # Helix uid rewrite first — the rebind step ignores event_type_uid.
     nodes_stripped = _rewrite_helix_uids_in_nodes(nodes_stripped, uid_map)
-    nodes_rebound = await _rebind_connections(nodes_stripped, session)
+    nodes_rebound = await _rebind_connections(
+        nodes_stripped, session, verkada_override=verkada_override
+    )
 
     new_flow = Flow(
         name=tpl.get("default_name") or tpl.get("name") or "Untitled flow",

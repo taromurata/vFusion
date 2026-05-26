@@ -405,6 +405,10 @@ class FlowImport(BaseModel):
     # the export. The frontend bootstrap step returns this map and we
     # apply it to node configs during import.
     helix_uid_map: dict[str, str] = Field(default_factory=dict)
+    # Same Verkada-org override as ApplyTemplateBody — when the
+    # operator picks a connection in the bootstrap modal we wire it
+    # into every null verkada connection_id slot during rebind.
+    verkada_connection_id: str | None = None
 
 
 class HelixBootstrapRequest(BaseModel):
@@ -625,7 +629,9 @@ async def import_flow(
     # touches connection_id slots, but the uid map lives in node configs
     # under event_type_uid, so the two are independent passes.
     node_dicts = _rewrite_helix_uids_in_nodes(node_dicts, payload.helix_uid_map)
-    node_dicts = await _rebind_connections(node_dicts, session)
+    node_dicts = await _rebind_connections(
+        node_dicts, session, verkada_override=payload.verkada_connection_id
+    )
     flow = Flow(
         name=payload.name or "Imported flow",
         enabled=False,

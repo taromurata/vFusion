@@ -45,8 +45,13 @@ export default function HelixBootstrapModal({
    */
   intent?: "import" | "apply" | "insert";
   onCancel: () => void;
-  // Called with the uid rewrite map (empty when the operator skipped).
-  onConfirm: (uidMap: Record<string, string>) => void;
+  // Called with the uid rewrite map (empty when the operator skipped)
+  // and the picked Verkada connection id. The caller wants the
+  // connection so it can rebind every Verkada connection_id slot in
+  // the template — without that, an org with multiple Verkada
+  // connections leaves the picker null and the user wonders why
+  // their selection didn't stick.
+  onConfirm: (uidMap: Record<string, string>, verkadaConnectionId: string) => void;
 }) {
   // Verkada connections only — Helix types are scoped to a Verkada org.
   const conns = useQuery({
@@ -151,7 +156,7 @@ export default function HelixBootstrapModal({
         );
         return;
       }
-      onConfirm(res.uid_map);
+      onConfirm(res.uid_map, effectiveTarget);
     },
     onError: (e: Error) => setBootstrapError(e.message),
   });
@@ -159,7 +164,7 @@ export default function HelixBootstrapModal({
   // Skip still hands back the prebuilt map so any types that *do*
   // already exist get rewritten correctly — the only thing skipping
   // does is opt out of creating the missing ones.
-  const handleSkip = () => onConfirm(prebuiltUidMap);
+  const handleSkip = () => onConfirm(prebuiltUidMap, effectiveTarget);
 
   const probeLoading = !!effectiveTarget && existing.isLoading;
   const missingCount = matches.filter((m) => m === null).length;
@@ -306,7 +311,7 @@ export default function HelixBootstrapModal({
                 if (allExist) {
                   // Nothing to create — just hand the prebuilt uid_map
                   // back to the caller. No API round-trip needed.
-                  onConfirm(prebuiltUidMap);
+                  onConfirm(prebuiltUidMap, effectiveTarget);
                 } else {
                   bootstrapMut.mutate();
                 }

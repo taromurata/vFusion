@@ -281,6 +281,10 @@ export interface FlowExportFormat {
   // Never present on the wire from /export — it's a client-injected
   // rewrite hint consumed by /import.
   helix_uid_map?: Record<string, string>;
+  // Same idea as helix_uid_map — set client-side just before /import
+  // to forward the operator's chosen Verkada connection so every
+  // null verkada connection_id slot in the import gets wired to it.
+  verkada_connection_id?: string | null;
 }
 
 // ---- Helix bootstrap (used during flow import / template apply) ----
