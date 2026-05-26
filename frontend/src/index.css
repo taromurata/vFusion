@@ -97,25 +97,29 @@ body {
 /* Canvas edge glow — borrowed from the Templates page so the
  * flow editor reads as "alive" instead of static schematic.
  *
- * React Flow renders every edge as a single ``path.react-flow__edge-path``
- * inside the ``.react-flow__edge`` group. We:
- *   1. Drop-shadow tinted by the path's own stroke (currentColor would
- *      be cleaner, but RF sets stroke via inline style, not color —
- *      ``drop-shadow`` reads stroke directly).
- *   2. For animated edges (``react-flow__edge.animated``) override the
- *      default subtle dasharray with a stronger 6-4 pattern + faster
- *      drift, matching the template strip's visual rhythm.
+ * Two implementation notes that bit us the first time:
  *
- * Selected edges get a brighter glow so click feedback reads. */
-.react-flow__edge .react-flow__edge-path {
-  filter: drop-shadow(0 0 4px rgba(56, 189, 248, 0.25));
+ *   1. The drop-shadow lives on ``.react-flow__edges`` (the outer
+ *      <svg>), not on the individual path. Filters applied to a
+ *      single path inside a stacking SVG get clipped to the path's
+ *      bounding box on some browsers, so the halo disappears. Putting
+ *      it on the SVG lifts the rendering pass and the glow shows.
+ *
+ *   2. React Flow sets ``stroke-dasharray`` via an inline style on
+ *      animated edges, so our override needs ``!important`` to win.
+ *      Same for the animation property. We also bump strokeWidth
+ *      visually via the filter rather than fighting the inline
+ *      ``stroke-width`` set in the React component. */
+.react-flow__edges {
+  filter: drop-shadow(0 0 5px rgba(56, 189, 248, 0.35));
+  overflow: visible !important;
 }
 .react-flow__edge.selected .react-flow__edge-path {
-  filter: drop-shadow(0 0 6px rgba(56, 189, 248, 0.7));
+  filter: drop-shadow(0 0 6px rgba(56, 189, 248, 0.9));
 }
 .react-flow__edge.animated .react-flow__edge-path {
-  stroke-dasharray: 6 4;
-  animation: canvas-edge-flow 0.9s linear infinite;
+  stroke-dasharray: 6 4 !important;
+  animation: canvas-edge-flow 0.9s linear infinite !important;
 }
 @keyframes canvas-edge-flow {
   from { stroke-dashoffset: 0; }
