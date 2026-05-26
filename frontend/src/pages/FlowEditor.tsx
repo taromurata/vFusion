@@ -44,10 +44,15 @@ import ScheduleTriggerForm, {
   scheduleStateToConfig,
   ScheduleConfigState,
 } from "../components/ScheduleTriggerForm";
+import GlowEdge from "../components/flow-canvas/GlowEdge";
 import { uuid } from "../lib/ids";
 
 
 const NODE_TYPES = { trigger: TriggerNode, action: ActionNode, condition: ConditionNode };
+// Single custom edge type — paints a sky-blue halo under every
+// edge plus a drift-animated dashed stroke on top. See GlowEdge
+// for the why-not-just-CSS rationale.
+const EDGE_TYPES = { glow: GlowEdge };
 const COL_X = 320;
 const ROW_Y = 200;
 const TRIGGER_ID = "__trigger__";
@@ -681,25 +686,26 @@ function FlowEditorInner() {
       stroke = tgtStatus === "failed" ? "#fb7185" : "#34d399";
       strokeWidth = 2;
     }
+    // Branch label color matches the stroke so true=emerald,
+    // false=rose, unbranched stays muted.
+    const labelColor =
+      e.branch === "true"
+        ? "#34d399"
+        : e.branch === "false"
+          ? "#fb7185"
+          : "#94a3b8";
     return {
       id: e.id,
+      type: "glow",
       source: e.source,
       target: e.target,
       sourceHandle: isCondition ? e.branch : undefined,
-      animated: true,
-      label: e.branch ?? undefined,
-      labelStyle: {
-        fill:
-          e.branch === "true"
-            ? "#34d399"
-            : e.branch === "false"
-              ? "#fb7185"
-              : "#94a3b8",
-        fontSize: 11,
-        fontWeight: 600,
+      data: {
+        stroke,
+        strokeWidth,
+        branchLabel: e.branch ?? undefined,
+        labelColor,
       },
-      labelBgStyle: { fill: "#0f172a", fillOpacity: 0.9 },
-      style: { stroke, strokeWidth },
       selected: selected.kind === "edge" && selected.id === e.id,
     };
   });
@@ -722,11 +728,11 @@ function FlowEditorInner() {
       }
       return {
         id: `${TRIGGER_ID}-${n.id}`,
+        type: "glow",
         source: TRIGGER_ID,
         target: n.id,
-        animated: true,
         selectable: false,
-        style: { stroke, strokeWidth },
+        data: { stroke, strokeWidth },
       };
     });
 
@@ -1002,6 +1008,7 @@ function FlowEditorInner() {
             nodes={rfNodes}
             edges={[...triggerEdges, ...rfEdges]}
             nodeTypes={NODE_TYPES}
+            edgeTypes={EDGE_TYPES}
             onConnect={handleConnect}
             onNodeClick={(_e, node) => {
               if (node.id === TRIGGER_ID) setSelected({ kind: "trigger" });

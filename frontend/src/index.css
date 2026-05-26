@@ -110,29 +110,11 @@ body {
  *      Same for the animation property. We also bump strokeWidth
  *      visually via the filter rather than fighting the inline
  *      ``stroke-width`` set in the React component. */
-.react-flow .react-flow__edges,
-.react-flow .react-flow__edges svg {
-  overflow: visible !important;
-}
-/* Halo lives on the edge group, not the path — drop-shadow on a
- * single <path> inside an SVG gets clipped to the path's bbox on
- * Chrome/Safari, so the glow appears to "not work." */
-.react-flow__edge {
-  filter: drop-shadow(0 0 6px rgba(56, 189, 248, 0.55));
-}
-.react-flow__edge.selected {
-  filter: drop-shadow(0 0 9px rgba(56, 189, 248, 0.95));
-}
-/* React Flow v12 ships its own ``dashdraw`` animation on
- * ``.react-flow__edge.animated path`` (stroke-dasharray: 5;
- * animation: dashdraw 0.5s linear infinite;). Target the same
- * descendant ``path`` so we beat their specificity *without*
- * needing ``!important``, and use a stronger dash + slightly
- * slower drift so the motion reads cleanly at canvas zoom. */
-.react-flow__edge.animated path.react-flow__edge-path {
-  stroke-dasharray: 8 5;
-  animation: canvas-edge-flow 0.9s linear infinite;
-}
+/* Drift animation for the GlowEdge custom edge component (see
+ * components/flow-canvas/GlowEdge.tsx). The keyframe lives here so
+ * inline style="animation: canvas-edge-flow..." on the <path>
+ * can reference it; the component renders its own halo + dashed
+ * stroke and doesn't rely on React Flow's default ``dashdraw``. */
 @keyframes canvas-edge-flow {
   from { stroke-dashoffset: 0; }
   to   { stroke-dashoffset: -26; }
