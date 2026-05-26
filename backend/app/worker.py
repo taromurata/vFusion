@@ -41,7 +41,7 @@ from app.engine.actions import ACTIONS
 from app.engine.conditions import evaluate as evaluate_condition
 from app.engine.progress import StepProgress
 from app.engine.schedule import is_due as schedule_is_due
-from app.models import Connection, Flow, Run
+from app.models import Connection, Flow, Run, VerkadaHelixEventType
 from app.pricing.gemini import refresh_gemini_pricing
 
 
@@ -111,6 +111,30 @@ async def _run_one_node(
 
 def _progress_for(run_id: UUID, step_name: str) -> StepProgress:
     return StepProgress(run_id=run_id, step_name=step_name)
+
+
+async def _fetch_helix_schema(
+    session, connection_id: UUID, event_type_uid: str
+) -> dict[str, Any] | None:
+    """Pull the synced Helix event-type schema for a given uid on a
+    given Verkada connection. Returns the ``event_schema`` dict
+    (field name -> type string) or None if we don't have a synced
+    row for it. Used by the BYOA worker to auto-fan-out analyze JSON
+    into per-attribute Helix posts even when the operator didn't
+    carry a paired-prompt mapping into the run."""
+    from sqlalchemy import select as sa_select
+
+    row = (
+        await session.execute(
+            sa_select(VerkadaHelixEventType).where(
+                VerkadaHelixEventType.connection_id == connection_id,
+                VerkadaHelixEventType.event_type_uid == event_type_uid,
+            )
+        )
+    ).scalar_one_or_none()
+    if row is None or not isinstance(row.event_schema, dict):
+        return None
+    return row.event_schema
 
 
 def _edge_matches_branch(edge: dict[str, Any], src_output: dict[str, Any] | None) -> bool:
@@ -441,9 +465,41 @@ async def run_byoa(ctx: dict[str, Any], run_id: str) -> dict[str, Any]:  # noqa:
                 else:
                     attributes[k] = v
         else:
-            helix_attr = params.get("helix_attribute") or "Summary"
-            text = str(analyze_output.get("text") or "")
-            attributes = {helix_attr: text}
+            # Auto-resolve: if the analyze output is structured JSON and
+            # the chosen Helix type's schema has field names matching
+            # those JSON keys (case-insensitive), post each field
+            # separately. This catches every entry path that *didn't*
+            # carry an explicit mapping — "Open in Workbench", manual
+            # prompt entry, replay paths that predate the mapping
+            # restore. Without this, the legacy "Summary" fallback
+            # stuffs the whole JSON into one attribute and Helix 400's.
+            attributes = {}
+            json_out = analyze_output.get("json") if isinstance(analyze_output, dict) else None
+            if isinstance(json_out, dict) and json_out:
+                schema = await _fetch_helix_schema(
+                    session,
+                    UUID(params["connection_id"]),
+                    str(params["helix_event_type_uid"]),
+                )
+                if schema:
+                    # case-insensitive JSON key index for matching
+                    json_index = {k.lower(): k for k in json_out.keys()}
+                    for schema_field in schema.keys():
+                        jk = json_index.get(schema_field.lower())
+                        if jk is not None:
+                            val = json_out[jk]
+                            attributes[schema_field] = (
+                                val if isinstance(val, (str, int, float, bool)) else str(val)
+                            )
+            if not attributes:
+                # No JSON or no schema match — fall back to the old
+                # single-field path with whatever attribute the
+                # operator picked (defaults to "Summary" if they
+                # didn't pick one, which still 400's on paired types
+                # but at least makes the failure visible).
+                helix_attr = params.get("helix_attribute") or "Summary"
+                text = str(analyze_output.get("text") or "")
+                attributes = {helix_attr: text}
 
         helix_config: dict[str, Any] = {
             "connection_id": params["connection_id"],
