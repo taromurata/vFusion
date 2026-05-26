@@ -554,9 +554,17 @@ function FlowEditorInner() {
   // flows open the existing TestRunModal so the operator can pick a
   // sample event. Either way we capture the run_id and let the polling
   // hook light up the canvas — no navigation away.
-  const handleRunFromCanvas = () => {
+  const handleRunFromCanvas = async () => {
     if (isNew || !flowId) return;
     setErr(null);
+    // Auto-save first so the run executes against the on-screen
+    // config, not whatever was last persisted. Same foot-gun fix as
+    // the "Test run" button in the toolbar.
+    try {
+      await save.mutateAsync();
+    } catch {
+      return;
+    }
     if (triggerType === "schedule") {
       apiPost<{ run_id: string }>(`/api/flows/${flowId}/test-run`, {
         input: {
@@ -900,7 +908,19 @@ function FlowEditorInner() {
             Auto arrange
           </button>
           <button
-            onClick={() => {
+            onClick={async () => {
+              // Always save before testing. Without this, an operator
+              // who tweaks a step then jumps straight to Test run sees
+              // the *previous* persisted config execute — the
+              // hard-to-debug "I changed the connection but it still
+              // errors" foot-gun. Auto-save first; if it fails (bad
+              // validation, etc.) bail and surface the error rather
+              // than silently running stale config.
+              try {
+                await save.mutateAsync();
+              } catch {
+                return;
+              }
               if (triggerType === "schedule") {
                 // No webhook payload to seed from — fire synthetically.
                 scheduleTestRun.mutate();
@@ -915,12 +935,16 @@ function FlowEditorInner() {
               isNew
                 ? "Save the flow first to test it"
                 : triggerType === "schedule"
-                  ? "Fire this scheduled flow right now"
-                  : "Run this flow with a past webhook payload"
+                  ? "Save and fire this scheduled flow right now"
+                  : "Save and run this flow with a past webhook payload"
             }
             className="text-sm px-3 py-1.5 rounded-md bg-white/10 hover:bg-white/15 text-slate-100 border border-white/15 disabled:opacity-50"
           >
-            {scheduleTestRun.isPending ? "Starting…" : "Test run"}
+            {save.isPending
+              ? "Saving…"
+              : scheduleTestRun.isPending
+                ? "Starting…"
+                : "Test run"}
           </button>
           <button
             onClick={handleExport}
