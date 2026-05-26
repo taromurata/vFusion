@@ -1208,36 +1208,55 @@ function FlowEditorInner() {
                   // (template default included), so an operator who
                   // intentionally points the helix step at a
                   // different camera doesn't get overwritten.
+                  //
+                  // Subtle: this used to call updateNode twice (once
+                  // for the selected node, once per downstream helix
+                  // step). Both calls captured the *same* stale
+                  // ``nodes`` array from the parent's closure, so the
+                  // second setNodes overwrote the first and the
+                  // camera the operator just picked vanished on the
+                  // next render — they had to click twice for it to
+                  // stick. Build a single new nodes array and commit
+                  // it once.
                   const prev = selectedNode.config ?? {};
                   const prevCamera = (prev.camera_id as string) ?? "";
                   const nextCamera = (c.camera_id as string) ?? "";
-                  updateNode(selectedNode.id, { config: c });
-                  if (
+                  const shouldMirror =
                     (selectedNode.action_type ?? "").startsWith(
                       "gemini_analyze",
-                    ) &&
-                    prevCamera !== nextCamera
-                  ) {
-                    const downstream = downstreamHelixSteps(
-                      selectedNode.id,
-                      nodes,
-                      edges,
-                    );
-                    for (const helix of downstream) {
-                      const helixCamera =
-                        (helix.config?.camera_id as string) ?? "";
-                      const matchesPrev =
-                        helixCamera === "" || helixCamera === prevCamera;
-                      if (matchesPrev) {
-                        updateNode(helix.id, {
+                    ) && prevCamera !== nextCamera;
+                  const mirrorTargets = shouldMirror
+                    ? new Set(
+                        downstreamHelixSteps(
+                          selectedNode.id,
+                          nodes,
+                          edges,
+                        )
+                          .filter((helix) => {
+                            const helixCamera =
+                              (helix.config?.camera_id as string) ?? "";
+                            return (
+                              helixCamera === "" || helixCamera === prevCamera
+                            );
+                          })
+                          .map((h) => h.id),
+                      )
+                    : new Set<string>();
+                  setNodes(
+                    nodes.map((n) => {
+                      if (n.id === selectedNode.id) return { ...n, config: c };
+                      if (mirrorTargets.has(n.id)) {
+                        return {
+                          ...n,
                           config: {
-                            ...(helix.config ?? {}),
+                            ...(n.config ?? {}),
                             camera_id: nextCamera,
                           },
-                        });
+                        };
                       }
-                    }
-                  }
+                      return n;
+                    }),
+                  );
                 }}
               />
             )}
