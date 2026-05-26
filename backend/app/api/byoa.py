@@ -41,6 +41,13 @@ class ByoaRunRequest(BaseModel):
     post_to_helix: bool = False
     helix_event_type_uid: str | None = None
     helix_attribute: str | None = None
+    # Paired-prompt multi-field mapping: {"Animal": "{{ output.json.animal }}",
+    # "Behavior": "{{ output.json.behavior }}"}. When present, the worker
+    # ignores ``helix_attribute`` and posts each field individually. Without
+    # this declared on the model, Pydantic strips the field from the body
+    # and BYOA quietly stuffs the entire JSON blob into a "Summary"
+    # attribute that doesn't exist on the paired event type.
+    helix_attribute_mapping: dict[str, str] | None = None
 
 
 class ByoaRunResponse(BaseModel):
@@ -92,7 +99,14 @@ async def run_once(
     if payload.post_to_helix:
         input_blob["post_to_helix"] = True
         input_blob["helix_event_type_uid"] = payload.helix_event_type_uid
-        input_blob["helix_attribute"] = payload.helix_attribute or "Summary"
+        if payload.helix_attribute_mapping:
+            # Paired prompt — let the worker post each field separately.
+            # Don't seed a fallback ``helix_attribute`` here; the worker
+            # prefers the mapping when present and the legacy single-field
+            # path would just be dead weight in the input blob.
+            input_blob["helix_attribute_mapping"] = payload.helix_attribute_mapping
+        else:
+            input_blob["helix_attribute"] = payload.helix_attribute or "Summary"
     run = Run(
         flow_id=None,
         webhook_event_id=None,
