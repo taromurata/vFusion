@@ -251,6 +251,15 @@ function RunDetailView({ run }: { run: RunDetail }) {
             saw — it's the run's shared context. */}
         <RunCapturedAsset run={run} />
 
+        {/* Run-level Helix-posted summary. The verkada_helix_event
+            step's output carries the request_body.attributes dict
+            — exactly what landed on the Verkada Helix event. 9/10
+            times that's what the operator is here to confirm
+            ("did Animal=dog get through?"), so we surface it as a
+            tidy card above the step chain instead of making them
+            click through to step → output → request_body. */}
+        <HelixPostSummary steps={run.steps ?? []} />
+
         {run.error && (
           <div>
             <SectionTitle>Error</SectionTitle>
@@ -480,6 +489,80 @@ function StepCard({
 // the operator sees the camera context — same image Gemini looked at
 // — without having to expand the analyze step. Falls silent when
 // neither is present (e.g. weather_fetch runs, helix-only flows).
+// Run-level summary of every successful Helix post in the run. Reads
+// each verkada_helix_event step's output.request_body.attributes —
+// that's the dict that actually went over the wire to Verkada. We
+// render it as a labeled pill block so the operator can confirm
+// "yes, the right values reached Helix" at a glance, without
+// expanding the step + drilling into request_body.
+function HelixPostSummary({ steps }: { steps: RunStep[] }) {
+  const helixSteps = steps.filter((s) => {
+    if (s.type !== "verkada_helix_event") return false;
+    if (s.status !== "success") return false;
+    const out = s.output as Record<string, unknown> | null | undefined;
+    const body = out?.request_body as Record<string, unknown> | null | undefined;
+    return body && typeof body === "object" && "attributes" in body;
+  });
+  if (helixSteps.length === 0) return null;
+  return (
+    <div>
+      <SectionTitle>Posted to Helix</SectionTitle>
+      <div className="space-y-2">
+        {helixSteps.map((s, i) => {
+          const out = s.output as Record<string, unknown>;
+          const body = out.request_body as Record<string, unknown>;
+          const attrs = body.attributes as Record<string, unknown>;
+          // Multi-step flows sometimes post twice (once per branch).
+          // Label each block so the operator can tell them apart;
+          // fall back to step name when no friendly label is set.
+          const heading = s.label || s.name;
+          const resp = out.verkada_response as
+            | Record<string, unknown>
+            | null
+            | undefined;
+          const statusCode =
+            typeof resp?.status_code === "number" ? resp.status_code : null;
+          return (
+            <div
+              key={`${s.name}-${i}`}
+              className="bg-emerald-950/30 border border-emerald-900/60 rounded p-3"
+            >
+              <div className="flex items-center gap-2 text-xs text-emerald-300 mb-2">
+                <span>🧬</span>
+                <span className="font-medium">{heading}</span>
+                {statusCode !== null && (
+                  <span className="text-[10px] text-slate-400">
+                    · HTTP {statusCode}
+                  </span>
+                )}
+              </div>
+              <dl className="grid grid-cols-[max-content_1fr] gap-x-3 gap-y-1 text-xs">
+                {Object.entries(attrs).map(([k, v]) => (
+                  <FragmentRow key={k} k={k} v={v} />
+                ))}
+              </dl>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+function FragmentRow({ k, v }: { k: string; v: unknown }) {
+  const rendered =
+    typeof v === "string" || typeof v === "number" || typeof v === "boolean"
+      ? String(v)
+      : JSON.stringify(v);
+  return (
+    <>
+      <dt className="font-mono text-emerald-300">{k}</dt>
+      <dd className="text-slate-100 break-words">{rendered}</dd>
+    </>
+  );
+}
+
+
 function RunCapturedAsset({ run }: { run: RunDetail }) {
   const stepWithClip = (run.steps ?? []).find((s) => {
     const out = s.output as Record<string, unknown> | null | undefined;
