@@ -320,10 +320,12 @@ function FlowTemplatesPanel() {
                   )
                 )}
                 {tpl.summary_steps && tpl.summary_steps.length > 0 ? (
-                  <div
-                    className="mt-1.5 bg-slate-950/60 rounded border border-white/5 px-2"
-                    title={tpl.summary ?? undefined}
-                  >
+                  // No wrapper background — the strip sits directly
+                  // on the card surface so the animated chain reads
+                  // as part of the card, not a framed sub-panel.
+                  // ``-mx-1`` lets the spotlight glow on the first
+                  // / last pill peek into the card's own padding.
+                  <div className="mt-1 -mx-1" title={tpl.summary ?? undefined}>
                     <TemplateSummaryStrip steps={tpl.summary_steps} />
                   </div>
                 ) : (
