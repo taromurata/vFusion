@@ -10,6 +10,7 @@ import {
   PromptTemplate,
   RunDetail,
   VerkadaCamera,
+  WebhookEvent,
 } from "../lib/api";
 import EpochPicker from "../components/EpochPicker";
 import HelixEventTypeEditor from "../components/HelixEventTypeEditor";
@@ -78,6 +79,12 @@ export default function Byoa() {
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
   const fromRunId = searchParams.get("from_run");
+  // ``?from_event=<id>`` arrives from the WebhookInbox "Open in
+  // Workbench" button. We resolve the event below and seed camera_id
+  // + start_epoch + historical mode so the operator lands ready to
+  // hit Brew. Cleared from the URL after first read so subsequent
+  // edits don't keep re-seeding state.
+  const fromEventId = searchParams.get("from_event");
   const connections = useQuery({
     queryKey: ["connections"],
     queryFn: () => apiGet<Connection[]>("/api/connections"),
@@ -229,6 +236,55 @@ export default function Byoa() {
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [fromRunId]);
+
+  // "Open in Workbench" hydration. Same pattern as the run-it-back
+  // effect but seeded from a webhook event: pull camera_id +
+  // event timestamp out of the event's body and switch to historical
+  // mode so the operator can re-analyze exactly the frame Verkada
+  // sent. Verkada connection is matched by org_id when possible.
+  useEffect(() => {
+    if (!fromEventId) return;
+    let cancelled = false;
+    apiGet<WebhookEvent>(`/api/webhook-events/${fromEventId}`)
+      .then((event) => {
+        if (cancelled) return;
+        const body = (event.body_json ?? {}) as Record<string, unknown>;
+        const data =
+          body && typeof body === "object"
+            ? ((body as Record<string, unknown>).data as
+                | Record<string, unknown>
+                | undefined)
+            : undefined;
+        const camId =
+          typeof data?.camera_id === "string" ? data.camera_id : null;
+        // Verkada sends ``created`` as unix-seconds — perfect for our
+        // historical start_epoch field. Some event types use other
+        // names ("timestamp", "time"); fall through them in order.
+        const createdRaw =
+          (typeof data?.created === "number" && data.created) ||
+          (typeof data?.timestamp === "number" && data.timestamp) ||
+          (typeof data?.time === "number" && data.time) ||
+          null;
+        if (camId) setCameraId(camId);
+        if (typeof createdRaw === "number" && createdRaw > 0) {
+          setStartEpoch(createdRaw);
+          setMode("historical");
+        }
+        // Match the Verkada connection by org if we can — when an
+        // operator has multiple Verkada connections, the event tells
+        // us which one this came from.
+        if (event.org_id) {
+          const match = verkadaConns.find((c) => c.external_id === event.org_id);
+          if (match) setVerkadaConnId(match.id);
+        }
+        setSearchParams({}, { replace: true });
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [fromEventId, verkadaConns.length]);
 
   // Merge templates: user entries first, then built-ins. User templates
   // never carry Helix pairing (no UI for setting it yet) so they coerce

@@ -497,6 +497,17 @@ function EventDetail({
               + Create flow
             </button>
           )}
+          {event.family === "camera" && (
+            <button
+              onClick={() =>
+                navigate(`/workbench?tab=byoa&from_event=${event.id}`)
+              }
+              title="Open this event's camera in the Workbench with the trigger time pre-filled for a historical run"
+              className="text-xs px-2 py-1 rounded border border-violet-700/60 bg-violet-900/40 text-violet-200 hover:bg-violet-800/60 whitespace-nowrap"
+            >
+              Open in Workbench
+            </button>
+          )}
           <button
             onClick={onDelete}
             className="text-xs px-2 py-1 rounded border border-slate-700 text-slate-400 hover:text-rose-300 hover:border-rose-800"
