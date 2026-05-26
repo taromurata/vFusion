@@ -641,20 +641,30 @@ export default function Byoa() {
           </label>
           {postToHelix && (
             <Row>
-              <Field
-                label="Helix event type"
-                required
-                help={
-                  helixTypes.data && helixTypes.data.length === 0
-                    ? "No event types synced yet. Click 'Sync helix' on the connection."
-                    : "Synced from Verkada — pick which event type to post against."
-                }
-              >
-                <div className="flex gap-2 items-start">
+              {/*
+                Stack the picker + create button vertically. Earlier we
+                tucked the button inside ``Field`` (which wraps its
+                children in a <label>), but a button-inside-a-label is
+                a fragile clickable + visually disappears into the
+                row. Pulling the button out as a sibling makes the
+                create affordance obvious — especially when a paired
+                prompt has primed a schema and we *want* the operator
+                to notice it.
+              */}
+              <div>
+                <Field
+                  label="Helix event type"
+                  required
+                  help={
+                    helixTypes.data && helixTypes.data.length === 0
+                      ? "No event types synced yet. Click 'Sync helix' on the connection."
+                      : "Synced from Verkada — pick which event type to post against."
+                  }
+                >
                   <select
                     value={helixEventTypeUid}
                     onChange={(e) => setHelixEventTypeUid(e.target.value)}
-                    className="flex-1 px-2 py-1.5 rounded bg-white/5 border border-white/15 text-sm"
+                    className="w-full px-2 py-1.5 rounded bg-white/5 border border-white/15 text-sm"
                   >
                     <option value="">— pick an event type —</option>
                     {(helixTypes.data ?? []).map((et) => (
@@ -663,21 +673,24 @@ export default function Byoa() {
                       </option>
                     ))}
                   </select>
-                  <button
-                    type="button"
-                    onClick={() => setCreatingHelixType(true)}
-                    disabled={!verkadaConnId}
-                    title={
-                      pickedTemplate?.helix_event_type
-                        ? `Create the ${pickedTemplate.helix_event_type.name} type on this Verkada org (schema pre-filled from the paired prompt).`
-                        : "Create a new Helix event type on this Verkada org."
-                    }
-                    className="shrink-0 text-xs px-3 py-1.5 rounded border border-emerald-700/60 bg-emerald-900/40 text-emerald-200 hover:bg-emerald-800/60 disabled:opacity-40 disabled:cursor-not-allowed"
-                  >
-                    + New type
-                  </button>
-                </div>
-              </Field>
+                </Field>
+                <button
+                  type="button"
+                  onClick={() => setCreatingHelixType(true)}
+                  disabled={!verkadaConnId}
+                  title={
+                    pickedTemplate?.helix_event_type
+                      ? `Create the ${pickedTemplate.helix_event_type.name} type on this Verkada org (schema pre-filled from the paired prompt).`
+                      : "Create a new Helix event type on this Verkada org."
+                  }
+                  className="mt-2 inline-flex items-center gap-1 text-xs px-3 py-1.5 rounded border border-emerald-700/60 bg-emerald-900/40 text-emerald-200 hover:bg-emerald-800/60 disabled:opacity-40 disabled:cursor-not-allowed"
+                >
+                  <span aria-hidden>+</span>
+                  {pickedTemplate?.helix_event_type
+                    ? `Create "${pickedTemplate.helix_event_type.name}" in Verkada`
+                    : "New Helix event type"}
+                </button>
+              </div>
               {pickedTemplate?.helix_attribute_mapping ? (
                 // Paired prompt — fields fill from the multi-attribute
                 // mapping that travels with the prompt definition. Show
