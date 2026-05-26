@@ -44,10 +44,11 @@ export default function TemplateSummaryStrip({
   return (
     // ``px-3`` reserves horizontal slack so the highlighted-step glow
     // (which renders outside the pill's box) doesn't clip against the
-    // overflow-scroll container on the first / last step. ``py-3``
-    // does the same for vertical room — the spotlight scales the
-    // pill 105% so the top + bottom edges peek above the row.
-    <div className="flex items-stretch gap-1 overflow-x-auto px-3 py-3">
+    // overflow-scroll container on the first / last step. Vertical
+    // ``py-2`` keeps the spotlight scale-up (105%) from clipping at
+    // the top / bottom — bumped down from py-3 to keep template
+    // cards compact for at-a-glance reading.
+    <div className="flex items-stretch gap-1 overflow-x-auto px-3 py-2">
       {steps.map((s, i) => (
         <div key={i} className="flex items-stretch gap-1 shrink-0">
           <StepPill step={s} highlighted={i === active} />

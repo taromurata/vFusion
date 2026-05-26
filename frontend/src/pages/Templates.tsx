@@ -240,13 +240,16 @@ function FlowTemplatesPanel() {
           No templates match the selected tags. Clear filters to see everything.
         </div>
       ) : (
-        <div className="grid gap-3 sm:grid-cols-2">
+        <div className="grid gap-2 sm:grid-cols-2">
           {visible.map((tpl) => (
             <div
               key={tpl.id}
-              className="bg-white/5 backdrop-blur-sm border border-white/15 rounded-lg p-4 flex flex-col gap-3"
+              className="bg-white/5 backdrop-blur-sm border border-white/15 rounded-lg p-3 flex flex-col gap-2"
             >
               <div>
+                {/* Title row: name, "yours" badge, and tag chips share
+                    one wrapping line so a short-name template doesn't
+                    waste two rows. */}
                 <div className="flex items-center gap-2 flex-wrap">
                   <div className="text-sm font-medium text-slate-100">
                     {tpl.name}
@@ -256,54 +259,47 @@ function FlowTemplatesPanel() {
                       yours
                     </span>
                   )}
+                  {tpl.tags?.map((tag) => (
+                    <span
+                      key={tag}
+                      className={`text-[10px] px-1.5 py-0.5 rounded border ${TAG_STYLE[tag] ?? DEFAULT_TAG_STYLE}`}
+                    >
+                      {tag}
+                    </span>
+                  ))}
                 </div>
-                {(tpl.tags?.length ?? 0) > 0 && (
-                  <div className="flex items-center gap-1 flex-wrap mt-2">
-                    {tpl.tags.map((tag) => (
-                      <span
-                        key={tag}
-                        className={`text-[10px] px-1.5 py-0.5 rounded border ${TAG_STYLE[tag] ?? DEFAULT_TAG_STYLE}`}
-                      >
-                        {tag}
-                      </span>
-                    ))}
-                  </div>
-                )}
-                {/* Tagline is the snappy one-liner you can read at a
-                    glance. The long-form description is still here for
-                    operators who want the full story, but it lives
-                    behind a "Details" disclosure so the card stays
-                    scannable on a demo / video. Falls back to
-                    description when no tagline was authored. */}
+                {/* Tagline + a tiny inline Details disclosure. The
+                    long description lives behind the disclosure so
+                    the card stays scannable on a demo. */}
                 {tpl.tagline ? (
-                  <div className="text-sm text-slate-200 mt-2 leading-snug">
+                  <div className="text-[13px] text-slate-200 mt-1.5 leading-snug">
                     {tpl.tagline}
+                    {tpl.description && tpl.description !== tpl.tagline && (
+                      <details className="inline ml-1.5 text-[11px] text-slate-400 align-baseline">
+                        <summary className="cursor-pointer inline text-slate-500 hover:text-slate-300 select-none">
+                          Details
+                        </summary>
+                        <div className="mt-1 leading-relaxed">{tpl.description}</div>
+                      </details>
+                    )}
                   </div>
                 ) : (
                   tpl.description && (
-                    <div className="text-[11px] text-slate-400 mt-2 leading-relaxed">
+                    <div className="text-[11px] text-slate-400 mt-1.5 leading-relaxed">
                       {tpl.description}
                     </div>
                   )
                 )}
-                {tpl.tagline && tpl.description && tpl.description !== tpl.tagline && (
-                  <details className="mt-1.5 text-[11px] text-slate-400">
-                    <summary className="cursor-pointer text-slate-500 hover:text-slate-300 select-none">
-                      Details
-                    </summary>
-                    <div className="mt-1 leading-relaxed">{tpl.description}</div>
-                  </details>
-                )}
                 {tpl.summary_steps && tpl.summary_steps.length > 0 ? (
                   <div
-                    className="mt-2 bg-slate-950/60 rounded border border-white/5 px-2"
+                    className="mt-1.5 bg-slate-950/60 rounded border border-white/5 px-2"
                     title={tpl.summary ?? undefined}
                   >
                     <TemplateSummaryStrip steps={tpl.summary_steps} />
                   </div>
                 ) : (
                   tpl.summary && (
-                    <div className="mt-2 text-[11px] font-mono text-slate-500 bg-slate-950/60 rounded px-2 py-1 border border-white/5">
+                    <div className="mt-1.5 text-[11px] font-mono text-slate-500 bg-slate-950/60 rounded px-2 py-1 border border-white/5">
                       {tpl.summary}
                     </div>
                   )
