@@ -1,8 +1,8 @@
 {
   "id": "door-obstruction-check",
   "name": "Door obstruction check",
-  "description": "Scheduled sweep that checks whether a door is blocked by something it shouldn't be — boxes, pallets, hand trucks, equipment, chairs. People walking through or standing nearby don't count (they're transient). Gemini looks at a door-facing camera, judges if the doorway is impeded, and posts a Helix event when something needs to move. Useful for warehouses, server rooms, fire-egress audits, and any high-traffic door where physical blockage is a safety / compliance issue.",
-  "summary": "Schedule -> Gemini still-image (JSON) -> condition -> Helix 🚪 Door Obstruction event",
+  "description": "Scheduled sweep that checks whether a door is blocked by something it shouldn't be \u2014 boxes, pallets, hand trucks, equipment, chairs. People walking through or standing nearby don't count (they're transient). Gemini looks at a door-facing camera, judges if the doorway is impeded, and posts a Helix event when something needs to move. Useful for warehouses, server rooms, fire-egress audits, and any high-traffic door where physical blockage is a safety / compliance issue.",
+  "summary": "Schedule -> Gemini still-image (JSON) -> condition -> Helix \ud83d\udeaa Door Obstruction event",
   "default_name": "Door obstruction check",
   "flow": {
     "trigger_type": "schedule",
@@ -13,7 +13,7 @@
     "helix_event_types": [
       {
         "event_type_uid": "tpl:door-obstruction",
-        "name": "🚪 Door Obstruction",
+        "name": "\ud83d\udeaa Door Obstruction",
         "event_schema": {
           "Object Type": "string",
           "Severity": "string",
@@ -33,7 +33,7 @@
           "gemini_connection_id": null,
           "camera_id": "",
           "model": "gemini-2.5-flash",
-          "prompt": "You are checking whether a door visible in this security camera frame is BLOCKED by a physical object that shouldn't be there. Focus on the door itself and the immediate egress path (within a few feet of the doorway).\n\nRespond with ONLY a JSON object - no prose, no code fence - with exactly four keys:\n  \"obstructed\":  boolean. true when an object is physically blocking the door from being opened or used as egress; false otherwise.\n  \"object_type\": when obstructed, a short noun phrase describing what's blocking it (e.g. \"cardboard boxes\", \"hand truck\", \"shopping cart\", \"chair\", \"stack of pallets\", \"floor scrubber\", \"equipment cart\"). Use \"unknown_object\" if you can see an obstruction but can't name it. Use null when not obstructed.\n  \"severity\":    when obstructed, one of \"low\" (small / easily moved object partially in the way), \"medium\" (door usable but path is partly blocked), \"high\" (door cannot be opened or path completely blocked - a fire-code / safety issue). Use null when not obstructed.\n  \"reasoning\":   one-sentence explanation of what you saw, max 180 characters.\n\nDO NOT flag:\n  - People walking through, standing near the door, or queueing — they are transient and not an obstruction.\n  - Carpets, floor mats, door stops, signage, posters, normal door hardware.\n  - Items clearly on shelves / racks adjacent to but not in front of the door.\n  - The door itself being closed or open — only flag when something else is in the doorway.\n\nDO flag:\n  - Boxes, pallets, carts, equipment, or furniture placed in front of the door or in the immediate egress path.\n  - Stacked / piled items that would slow someone exiting quickly.\n  - Liquid spills or debris fields that look like a slip hazard right at the doorway.\n\nExamples:\n  {\"obstructed\": true, \"object_type\": \"cardboard boxes\", \"severity\": \"medium\", \"reasoning\": \"Three boxes stacked directly in front of the door, partially blocking the swing.\"}\n  {\"obstructed\": true, \"object_type\": \"hand truck\", \"severity\": \"high\", \"reasoning\": \"Loaded hand truck parked across the entire doorway, door cannot open inward.\"}\n  {\"obstructed\": false, \"object_type\": null, \"severity\": null, \"reasoning\": \"Door area clear, two people walking past but nothing blocking the path.\"}"
+          "prompt": "You are checking whether a door visible in this security camera frame is BLOCKED by a physical object that shouldn't be there. Focus on the door itself and the immediate egress path (within a few feet of the doorway).\n\nRespond with ONLY a JSON object - no prose, no code fence - with exactly four keys:\n  \"obstructed\":  boolean. true when an object is physically blocking the door from being opened or used as egress; false otherwise.\n  \"object_type\": when obstructed, a short noun phrase describing what's blocking it (e.g. \"cardboard boxes\", \"hand truck\", \"shopping cart\", \"chair\", \"stack of pallets\", \"floor scrubber\", \"equipment cart\"). Use \"unknown_object\" if you can see an obstruction but can't name it. Use null when not obstructed.\n  \"severity\":    when obstructed, one of \"low\" (small / easily moved object partially in the way), \"medium\" (door usable but path is partly blocked), \"high\" (door cannot be opened or path completely blocked - a fire-code / safety issue). Use null when not obstructed.\n  \"reasoning\":   one-sentence explanation of what you saw, max 180 characters.\n\nDO NOT flag:\n  - People walking through, standing near the door, or queueing \u2014 they are transient and not an obstruction.\n  - Carpets, floor mats, door stops, signage, posters, normal door hardware.\n  - Items clearly on shelves / racks adjacent to but not in front of the door.\n  - The door itself being closed or open \u2014 only flag when something else is in the doorway.\n\nDO flag:\n  - Boxes, pallets, carts, equipment, or furniture placed in front of the door or in the immediate egress path.\n  - Stacked / piled items that would slow someone exiting quickly.\n  - Liquid spills or debris fields that look like a slip hazard right at the doorway.\n\nExamples:\n  {\"obstructed\": true, \"object_type\": \"cardboard boxes\", \"severity\": \"medium\", \"reasoning\": \"Three boxes stacked directly in front of the door, partially blocking the swing.\"}\n  {\"obstructed\": true, \"object_type\": \"hand truck\", \"severity\": \"high\", \"reasoning\": \"Loaded hand truck parked across the entire doorway, door cannot open inward.\"}\n  {\"obstructed\": false, \"object_type\": null, \"severity\": null, \"reasoning\": \"Door area clear, two people walking past but nothing blocking the path.\"}"
         },
         "position": {
           "x": 220,
@@ -58,7 +58,7 @@
       {
         "id": "post_helix",
         "name": "post_helix",
-        "label": "Log the obstruction",
+        "label": "Post to Helix",
         "kind": "action",
         "action_type": "verkada_helix_event",
         "config": {

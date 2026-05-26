@@ -73,7 +73,7 @@
       {
         "id": "log_match",
         "name": "log_match",
-        "label": "Log the match",
+        "label": "Post to Helix",
         "kind": "action",
         "action_type": "verkada_helix_event",
         "config": {

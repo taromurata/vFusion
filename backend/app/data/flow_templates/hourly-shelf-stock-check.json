@@ -42,7 +42,7 @@
       {
         "id": "post_helix",
         "name": "post_helix",
-        "label": "Log stock level",
+        "label": "Post to Helix",
         "kind": "action",
         "action_type": "verkada_helix_event",
         "config": {

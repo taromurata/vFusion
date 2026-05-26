@@ -364,7 +364,7 @@ function FlowEditorInner() {
     const newNode: FlowNode = {
       id,
       name: newName,
-      label: "Tell Verkada",
+      label: "Post to Helix",
       kind: "action",
       action_type: "verkada_helix_event",
       config: {
