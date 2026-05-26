@@ -1,3 +1,10 @@
+# Pin the Compose project name so Docker Desktop / `docker compose
+# ps` show "vfusion" instead of inferring it from the local
+# directory (which is still named vSplice on disk even though the
+# GitHub repo was renamed to vFusion). Without this, every container
+# / network / volume gets the old vsplice_ prefix.
+name: vfusion
+
 services:
   postgres:
     image: postgres:16-alpine
