@@ -10,6 +10,7 @@ question of how Verkada's API changes, not how vFusion's codebase
 changes.
 """
 
+import json
 import re
 from typing import Any
 from uuid import UUID
@@ -140,6 +141,18 @@ async def run(
         body if body is not None and endpoint.method.upper() in {"POST", "PUT", "PATCH"} else None
     )
 
+    # Log the exact outbound request before sending so the run's log
+    # panel shows method/path/query/body even when the call errors.
+    progress = ctx.get("_progress")
+    if progress:
+        await progress.log(
+            f"{endpoint.method} {path} → "
+            + json.dumps(
+                {"query": query_params or None, "body": send_body},
+                default=str,
+            )
+        )
+
     client = VerkadaClient(api_key=api_key, base_url=region)
     try:
         result = await client.request(
@@ -150,6 +163,11 @@ async def run(
         )
     except VerkadaApiError as e:
         raise ValueError(str(e)) from e
+    if progress:
+        await progress.log(
+            f"Verkada responded {result.get('status_code')}: "
+            + json.dumps(result.get("body"), default=str)
+        )
 
     if result["status_code"] >= 400:
         raise ValueError(

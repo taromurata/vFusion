@@ -1,5 +1,6 @@
 """Action: Verkada admin door unlock."""
 
+import json
 from typing import Any
 
 from app.brand import BRAND_NAME
@@ -46,7 +47,7 @@ SAMPLE_OUTPUT: dict[str, Any] = {
 
 async def run(
     config: dict[str, Any],
-    ctx: dict[str, Any],  # noqa: ARG001 — preset doesn't read trigger/steps yet
+    ctx: dict[str, Any],
     connection: Connection,
 ) -> dict[str, Any]:
     door_id = config.get("door_id")
@@ -61,10 +62,23 @@ async def run(
         )
     region = secret.get("region") or None
 
+    body = {"door_id": door_id}
+    progress = ctx.get("_progress")
+    if progress:
+        await progress.log(
+            "POST /access/v1/door/admin_unlock → " + json.dumps(body, default=str)
+        )
+
     client = VerkadaClient(api_key=api_key, base_url=region)
     result = await client.unlock_door(door_id)
+    if progress:
+        await progress.log(
+            f"Verkada responded {result.get('status_code')}: "
+            + json.dumps(result.get("body"), default=str)
+        )
     return {
         "action": "verkada_unlock_door",
         "door_id": door_id,
+        "request_body": body,
         "verkada_response": result,
     }

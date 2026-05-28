@@ -1,5 +1,6 @@
 """Action: activate a Verkada Access scenario (e.g. Lockdown, Evacuate)."""
 
+import json
 from typing import Any
 
 from app.brand import BRAND_NAME
@@ -45,7 +46,7 @@ SAMPLE_OUTPUT: dict[str, Any] = {
 
 async def run(
     config: dict[str, Any],
-    ctx: dict[str, Any],  # noqa: ARG001 — no trigger/step refs used by this preset
+    ctx: dict[str, Any],
     connection: Connection,
 ) -> dict[str, Any]:
     scenario_id = config.get("scenario_id")
@@ -60,10 +61,28 @@ async def run(
         )
     region = secret.get("region") or None
 
+    # Surface the exact request in the run log BEFORE sending — same
+    # debugging affordance the Helix action has. Lets you see what
+    # scenario_id actually went over the wire even when the call 403s.
+    body = {"scenario_id": scenario_id}
+    progress = ctx.get("_progress")
+    if progress:
+        await progress.log(
+            "POST /access/v1/scenario/activate → " + json.dumps(body, default=str)
+        )
+
     client = VerkadaClient(api_key=api_key, base_url=region)
     result = await client.activate_scenario(scenario_id)
+    if progress:
+        await progress.log(
+            f"Verkada responded {result.get('status_code')}: "
+            + json.dumps(result.get("body"), default=str)
+        )
     return {
         "action": "verkada_activate_scenario",
         "scenario_id": scenario_id,
+        # Echo the request body so the Runs page Output → Details has it
+        # persistently, not just transiently in the log panel.
+        "request_body": body,
         "verkada_response": result,
     }
