@@ -80,6 +80,12 @@ ACCESS_EVENT_TYPES: frozenset[str] = frozenset(
         "door_tailgating",
         "door_acu_offline",
         "door_schedule_override_removed",
+        # Lockdown lifecycle — fired when an Access scenario locks a
+        # door (and a debounced variant Verkada emits to suppress
+        # duplicate rapid-fire events). Carry lockdown_info +
+        # scenario_info; door_id may be null on the debounced one.
+        "door_lockdown",
+        "door_lockdown_debounced",
     }
 )
 
