@@ -47,6 +47,11 @@ CAMERA_EVENT_TYPES: frozenset[str] = frozenset(
         "natural_language_event",
         "person_of_interest",
         "license_plate_of_interest",
+        # Smart List match — a face/plate/object that hit a configured
+        # Command "Smart List." Carries the same camera_id / image_url /
+        # video_url shape as the other camera notifications; ``objects``
+        # may be empty (face-list matches don't populate it).
+        "smart_list",
         "tamper",
         "occlusion",
         "custom_event",
