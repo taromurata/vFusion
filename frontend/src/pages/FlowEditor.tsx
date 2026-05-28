@@ -1168,7 +1168,7 @@ function FlowEditorInner() {
                 triggerFamily={trigger.family}
                 triggerNotificationType={trigger.notificationType}
                 flowId={isNew ? null : (flowId ?? null)}
-                flowSaved={!isNew && !save.isPending}
+                onSaveBeforeRun={() => save.mutateAsync().then(() => undefined)}
                 sampleOutput={existing.data?.node_samples?.[selectedNode.id]}
                 priorSteps={priorStepsFor(
                   selectedNode.id,
@@ -1470,9 +1470,9 @@ function NodeEditor({
   onChangeConfig,
   onAddPairedHelixStep,
   flowId,
-  flowSaved,
   sampleOutput,
   lockedVerkadaConnectionId,
+  onSaveBeforeRun,
 }: {
   node: FlowNode;
   allSpecs: Record<string, ActionSpec>;
@@ -1485,9 +1485,13 @@ function NodeEditor({
   onChangeConfig: (c: Record<string, unknown>) => void;
   onAddPairedHelixStep?: React.ComponentProps<typeof StepConfigForm>["onAddPairedHelixStep"];
   flowId: string | null;
-  flowSaved: boolean;
   sampleOutput?: unknown;
   lockedVerkadaConnectionId?: string | null;
+  // Persists the current editor state before "Run this step" fires.
+  // Without it the per-step runner executes the *saved* config, so a
+  // freshly-picked scenario/connection that hasn't been saved yet
+  // looks "missing" — the run hits the stale persisted node.
+  onSaveBeforeRun: () => Promise<void>;
 }) {
   const isCondition = node.kind === "condition";
   const spec = isCondition ? allSpecs._condition : allSpecs[node.action_type ?? ""];
@@ -1501,11 +1505,18 @@ function NodeEditor({
     setRunOutput(sampleOutput);
   }, [sampleOutput, node.id]);
   const runNode = useMutation({
-    mutationFn: () =>
-      apiPost<{ output?: unknown; error?: string | null }>(
+    mutationFn: async () => {
+      // Persist the on-screen config first so the per-step runner
+      // executes what the operator sees, not the last-saved version.
+      // Otherwise a freshly-picked scenario / connection reads as
+      // "missing required field" because run-node hits the stale
+      // persisted node.
+      await onSaveBeforeRun();
+      return apiPost<{ output?: unknown; error?: string | null }>(
         `/api/flows/${flowId}/run-node`,
         { node_id: node.id },
-      ),
+      );
+    },
     onSuccess: (res) => {
       if (res.error) {
         setRunErr(res.error);
@@ -1585,15 +1596,15 @@ function NodeEditor({
           <button
             type="button"
             onClick={() => runNode.mutate()}
-            disabled={!flowId || !flowSaved || runNode.isPending}
+            disabled={!flowId || runNode.isPending}
             title={
-              !flowSaved
+              !flowId
                 ? "Save the flow first"
-                : "Run just this step with the captured outputs of prior steps"
+                : "Saves your edits, then runs just this step with the captured outputs of prior steps"
             }
             className="text-xs px-2 py-1 rounded bg-emerald-700 hover:bg-emerald-600 text-white disabled:opacity-50"
           >
-            {runNode.isPending ? "Running…" : "▶ Run this step"}
+            {runNode.isPending ? "Saving & running…" : "▶ Run this step"}
           </button>
           {runOutput !== undefined && runOutput !== null && (
             <span className="text-[11px] text-slate-500">
