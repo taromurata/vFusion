@@ -66,10 +66,31 @@ OPERATORS = (
 )
 
 
+def _norm(v: Any) -> str:
+    """Normalize a scalar to a lowercased string token for loose
+    equality. JSON booleans become ``"true"`` / ``"false"`` so a
+    Gemini field that comes back as the boolean ``true`` matches a
+    condition written against the string ``"true"`` (the common
+    case — operators type "true" in the right-hand box, but the
+    model returns a real bool). Ints/floats normalize too so
+    ``5`` == ``"5"``."""
+    if isinstance(v, bool):
+        return "true" if v else "false"
+    if isinstance(v, (int, float)):
+        # 5 and 5.0 both -> "5" so numeric strings line up.
+        return str(int(v)) if float(v).is_integer() else str(v)
+    return str(v).strip().casefold()
+
+
 def _eq_ci(a: Any, b: Any) -> bool:
-    if isinstance(a, str) and isinstance(b, str):
-        return a.casefold() == b.casefold()
-    return a == b
+    if a is None or b is None:
+        return a is b
+    # Loose, type-coercing equality: compare normalized string tokens
+    # so bool/number/string forms of the same value match. Without
+    # this, ``obstructed: true`` (JSON bool) never equals the string
+    # ``"true"`` in a condition and the downstream branch silently
+    # never fires.
+    return _norm(a) == _norm(b)
 
 
 def _contains_ci(haystack: Any, needle: Any) -> bool:
