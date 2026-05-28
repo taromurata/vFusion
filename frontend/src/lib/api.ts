@@ -557,6 +557,11 @@ export interface RunStep {
   status: "running" | "success" | "failed" | "skipped";
   output?: unknown;
   error?: string;
+  // Why a step was skipped — set by the worker when an upstream
+  // condition's branch wasn't taken, or an upstream step failed /
+  // was itself skipped. Surfaced on the Runs page so "skipped"
+  // isn't a dead end.
+  skip_reason?: string;
   started_at?: string;
   finished_at?: string;
 }

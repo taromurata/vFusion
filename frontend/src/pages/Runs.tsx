@@ -792,6 +792,17 @@ function StepBlock({
       </button>
       {open && (
         <div className="p-3 space-y-3">
+          {step.status === "skipped" && step.skip_reason && (
+            // Make "skipped" self-explanatory — the #1 confusion on
+            // the Runs page is a skipped Helix post with no hint as
+            // to which condition gated it.
+            <div>
+              <SectionTitle>Why skipped</SectionTitle>
+              <div className="text-xs text-amber-200/90 bg-amber-950/30 border border-amber-900/50 rounded p-2 leading-relaxed">
+                {step.skip_reason}
+              </div>
+            </div>
+          )}
           {step.error && (
             <div>
               <SectionTitle>Error</SectionTitle>

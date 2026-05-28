@@ -152,6 +152,52 @@ def _edge_matches_branch(edge: dict[str, Any], src_output: dict[str, Any] | None
     return False
 
 
+def _skip_reason(
+    inc: list[dict[str, Any]],
+    nodes_by_id: dict[str, dict[str, Any]],
+    results: dict[str, dict[str, Any]],
+) -> str:
+    """Human-readable explanation for why a step was skipped, derived
+    from its incoming edges. Shown on the Runs page so a skipped Helix
+    post reads "condition 'Is it blocked?' was false (obstructed
+    equals "true" → no match)" instead of a bare badge."""
+    if not inc:
+        return "No path reached this step."
+    reasons: list[str] = []
+    for edge in inc:
+        src_id = edge.get("source")
+        src = results.get(src_id) if src_id else None
+        src_node = nodes_by_id.get(src_id) if src_id else None
+        src_label = (
+            (src_node.get("label") or src_node.get("name") or src_id)
+            if src_node
+            else src_id
+        )
+        branch = edge.get("branch")
+        if src is None:
+            reasons.append(f"upstream step '{src_label}' did not run")
+        elif src["status"] == "failed":
+            reasons.append(f"upstream step '{src_label}' failed")
+        elif src["status"] == "skipped":
+            reasons.append(f"upstream step '{src_label}' was itself skipped")
+        elif branch in ("true", "false"):
+            out = src.get("output") or {}
+            matched = out.get("matched")
+            # Describe the condition that gated this branch.
+            left = out.get("left")
+            right = out.get("right")
+            op = out.get("operator", "equals")
+            took = "true" if matched else "false"
+            reasons.append(
+                f"condition '{src_label}' evaluated {took} "
+                f"({left!r} {op} {right!r}) so the '{branch}' branch "
+                f"wasn't taken"
+            )
+        else:
+            reasons.append(f"the edge from '{src_label}' wasn't taken")
+    return "; ".join(reasons)
+
+
 async def run_flow(ctx: dict[str, Any], run_id: str) -> dict[str, Any]:  # noqa: ARG001
     async with SessionLocal() as session:
         run = await session.get(Run, UUID(run_id))
@@ -241,6 +287,13 @@ async def run_flow(ctx: dict[str, Any], run_id: str) -> dict[str, Any]:  # noqa:
             if not reachable:
                 record["status"] = "skipped"
                 record["finished_at"] = _utcnow().isoformat()
+                # Explain *why* this step didn't run so the Runs UI can
+                # show it instead of a bare "skipped" badge. Walk the
+                # incoming edges and describe the gate that blocked us:
+                # an upstream condition that evaluated to the opposite
+                # branch, an upstream step that failed / was itself
+                # skipped, etc.
+                record["skip_reason"] = _skip_reason(inc, nodes_by_id, results)
                 results[nid] = {"status": "skipped", "output": None}
                 step_records.append(record)
                 # Persist incrementally so the UI sees skipped steps live.
