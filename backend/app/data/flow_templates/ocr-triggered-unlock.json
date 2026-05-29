@@ -51,7 +51,7 @@
         "kind": "condition",
         "config": {
           "left": "{{ steps.ocr.output.json.text }}",
-          "operator": "contains",
+          "operator": "contains_all",
           "right": ""
         },
         "position": {

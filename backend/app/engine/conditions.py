@@ -57,6 +57,8 @@ OPERATORS = (
     "not_equals",
     "contains",
     "not_contains",
+    "contains_all",
+    "contains_any",
     "exists",
     "not_exists",
     "gt",
@@ -99,6 +101,35 @@ def _contains_ci(haystack: Any, needle: Any) -> bool:
     return needle.casefold() in haystack.casefold()
 
 
+def _tokens(right: Any) -> list[str]:
+    """Split the right-hand value into individual words for the
+    ``contains_all`` / ``contains_any`` operators. Splits on whitespace
+    *and* commas so "casey keller", "casey, keller", and "casey,keller"
+    all yield ["casey", "keller"]. Lets a match succeed regardless of
+    word order — e.g. a license that reads "keller, casey edward" still
+    matches a target of "casey keller"."""
+    if not isinstance(right, str):
+        return []
+    raw = right.replace(",", " ").split()
+    return [t.casefold() for t in raw if t]
+
+
+def _contains_all(haystack: Any, right: Any) -> bool:
+    if not isinstance(haystack, str):
+        return False
+    hay = haystack.casefold()
+    toks = _tokens(right)
+    return bool(toks) and all(t in hay for t in toks)
+
+
+def _contains_any(haystack: Any, right: Any) -> bool:
+    if not isinstance(haystack, str):
+        return False
+    hay = haystack.casefold()
+    toks = _tokens(right)
+    return any(t in hay for t in toks)
+
+
 def _try_float(v: Any) -> float | None:
     try:
         return float(v)
@@ -115,6 +146,10 @@ def _compare(left: Any, op: str, right: Any) -> bool:
         return _contains_ci(left, right)
     if op == "not_contains":
         return not _contains_ci(left, right)
+    if op == "contains_all":
+        return _contains_all(left, right)
+    if op == "contains_any":
+        return _contains_any(left, right)
     if op == "exists":
         return left is not None and left != "" and left != []
     if op == "not_exists":

@@ -120,6 +120,8 @@ const OP_WORDS: Record<string, string> = {
   not_equals: "is not",
   contains: "contains",
   not_contains: "doesn't contain",
+  contains_all: "contains all of",
+  contains_any: "contains any of",
   starts_with: "starts with",
   ends_with: "ends with",
   greater_than: ">",
