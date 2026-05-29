@@ -3,7 +3,7 @@
   "name": "OCR-triggered door unlock",
   "tagline": "🔤 Read a plate or badge → unlock the door + log the match to Helix.",
   "description": "Read text, signage, license plates, or a badge/ID held up to a camera with Gemini, and unlock a door when the OCR'd text matches a target string (a VIP plate, vendor name, employee badge code, etc.). Analyzes a short video clip rather than a single frame, so a quickly-flashed ID still gets caught. Every match also gets logged to Helix as an OCR Match event so you have an audit trail of who/what got let in.",
-  "summary": "Motion webhook \u2192 Gemini OCR on a short clip (JSON) \u2192 condition \u2192 unlock door + Helix log",
+  "summary": "Motion webhook \u2192 Gemini OCR on a short clip (JSON) \u2192 condition \u2192 unlock door \u2192 Helix log of what + why",
   "default_name": "OCR-triggered door unlock",
   "flow": {
     "trigger_type": "verkada_webhook",
@@ -70,7 +70,7 @@
           "door_id": ""
         },
         "position": {
-          "x": 0,
+          "x": 220,
           "y": 480
         }
       },
@@ -87,13 +87,13 @@
           "attributes": {
             "Observed Text": "{{ steps.ocr.output.json.text }}",
             "Match Value": "",
-            "Door": ""
+            "Door": "{{ steps.unlock.output.door_id }}"
           },
           "time_ms": "{{ trigger.data.created }}000"
         },
         "position": {
-          "x": 440,
-          "y": 480
+          "x": 220,
+          "y": 720
         }
       }
     ],
@@ -110,10 +110,9 @@
         "branch": "true"
       },
       {
-        "id": "e_cond_log",
-        "source": "matches_target",
-        "target": "log_match",
-        "branch": "true"
+        "id": "e_unlock_log",
+        "source": "unlock",
+        "target": "log_match"
       }
     ]
   },
