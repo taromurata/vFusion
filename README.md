@@ -131,9 +131,9 @@ Open **http://localhost:15173**. On first run you'll be asked to set an **admin 
    - **Shared secret**: paste the string you just generated
    - Pick the notification types you want
    - **Save**
-3. **In Verkada Command** → click **Send test webhook**.
+3. **Trigger a webhook** — either wait for a real Verkada event to fire, or trigger one yourself (e.g. unlock a door, or walk in front of a camera with a motion/POI rule).
 
-The dashboard auto-unlocks the moment the real webhook arrives — vFusion auto-detects the org and creates a Connection for it. In the Webhook Explorer, the event should show a green **✓ verified** badge. To finish, head to **Connections**, open the auto-created Verkada org, and paste in your **Verkada API key** so the action steps can act on cameras, doors, and Helix.
+The dashboard auto-unlocks the moment the first webhook arrives — vFusion auto-detects the org and creates a Connection for it. In the Webhook Explorer, the event should show a green **✓ verified** badge. To finish, head to **Connections**, open the auto-created Verkada org, and paste in your **Verkada API key** so the action steps can act on cameras, doors, and Helix.
 
 ### What's exposed through the tunnel
 
@@ -194,16 +194,16 @@ Open **http://localhost:15173**. The welcome modal walks you through it — the 
    - **Shared secret**: paste the string from step 1
    - **Events**: pick the notification types you want, or "all events"
    - **Save**
-3. Click **Send test webhook**.
+3. **Trigger a webhook** — wait for a real Verkada event, or fire one yourself (unlock a door, trip a motion/POI rule in front of a camera).
 
 ### 5. Finish setup in vFusion
 
-The test webhook lands in the Webhook Explorer within a couple seconds — vFusion auto-detects the org and the welcome gate dismisses. Head to **Connections**, open the auto-created Verkada org, and supply:
+The first webhook lands in the Webhook Explorer within a couple seconds — vFusion auto-detects the org and the welcome gate dismisses. Head to **Connections**, open the auto-created Verkada org, and supply:
 
 - Your **Verkada API key** — generated in Verkada Command
 - The webhook signing secret field is already populated with the value from step 1; leave it as-is
 
-Save. The test webhook in the Webhook Explorer should now show a green **✓ verified** badge.
+Save. The next webhook in the Webhook Explorer should now show a green **✓ verified** badge.
 
 ---
 
