@@ -203,9 +203,9 @@ function RunDetailView({ run }: { run: RunDetail }) {
               onClick={() => flowReplay.mutate()}
               disabled={flowReplay.isPending}
               className="ml-auto text-xs px-2 py-1 rounded-md bg-sky-700 hover:bg-sky-600 text-white disabled:opacity-50"
-              title="Re-run this flow against the same webhook payload — same as Test run from the flow editor"
+              title="Re-run the whole flow against this same webhook payload — same as Test run in the flow editor"
             >
-              {flowReplay.isPending ? "Starting…" : "↻ Run it back"}
+              {flowReplay.isPending ? "Starting…" : "↻ Re-run flow"}
             </button>
           )}
           {run.webhook_event_id && (
