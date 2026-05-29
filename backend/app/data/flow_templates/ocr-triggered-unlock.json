@@ -2,8 +2,8 @@
   "id": "ocr-triggered-unlock",
   "name": "OCR-triggered door unlock",
   "tagline": "🔤 Read a plate or badge → unlock the door + log the match to Helix.",
-  "description": "Read text, signage, or license plates in front of a camera with Gemini and unlock a door when the OCR'd text matches a target string (a VIP plate, vendor name, employee badge code, etc.). Every match also gets logged to Helix as an OCR Match event so you have an audit trail of who/what got let in.",
-  "summary": "Motion webhook \u2192 Gemini OCR (JSON) \u2192 condition \u2192 unlock door + Helix log",
+  "description": "Read text, signage, license plates, or a badge/ID held up to a camera with Gemini, and unlock a door when the OCR'd text matches a target string (a VIP plate, vendor name, employee badge code, etc.). Analyzes a short video clip rather than a single frame, so a quickly-flashed ID still gets caught. Every match also gets logged to Helix as an OCR Match event so you have an audit trail of who/what got let in.",
+  "summary": "Motion webhook \u2192 Gemini OCR on a short clip (JSON) \u2192 condition \u2192 unlock door + Helix log",
   "default_name": "OCR-triggered door unlock",
   "flow": {
     "trigger_type": "verkada_webhook",
@@ -28,13 +28,16 @@
         "name": "ocr",
         "label": "Read the text",
         "kind": "action",
-        "action_type": "gemini_analyze_still_image",
+        "action_type": "gemini_analyze_camera",
         "config": {
           "connection_id": null,
           "gemini_connection_id": null,
           "camera_id": "{{ trigger.data.camera_id }}",
+          "start_epoch": "{{ trigger.data.created }}",
+          "duration_sec": "8",
+          "pre_roll_sec": "3",
           "model": "gemini-2.5-flash",
-          "prompt": "Read every piece of legible text, signage, and license plates visible in this security camera frame.\n\nRespond with ONLY a JSON object - no prose, no code fence - with exactly two keys:\n  \"text\":     the full extracted text as a single string, multiple items separated by a pipe \"|\" character (e.g. \"FEDEX|7BCV928\"). Lowercase the text so downstream matching is case-insensitive. Use \"none\" when no text is legible.\n  \"has_text\": boolean, true when at least one piece of text was read, false otherwise.\n\nDo not invent characters. If you can't clearly read a character, leave it out. Skip generic stuff like brand watermarks on the camera UI itself.\n\nExamples:\n  {\"text\": \"fedex|7bcv928\", \"has_text\": true}\n  {\"text\": \"ups|conway construction\", \"has_text\": true}\n  {\"text\": \"none\", \"has_text\": false}"
+          "prompt": "Read every piece of legible text, signage, and license plates that appears anywhere across this security camera video. Text may only be readable for a moment (e.g. someone briefly holds up an ID or badge), so scan all frames, not just the first.\n\nRespond with ONLY a JSON object - no prose, no code fence - with exactly two keys:\n  \"text\":     the full extracted text as a single string, multiple items separated by a pipe \"|\" character (e.g. \"FEDEX|7BCV928\"). Lowercase the text so downstream matching is case-insensitive. Use \"none\" when no text is legible.\n  \"has_text\": boolean, true when at least one piece of text was read, false otherwise.\n\nDo not invent characters. If you can't clearly read a character, leave it out. Skip generic stuff like brand watermarks on the camera UI itself.\n\nExamples:\n  {\"text\": \"fedex|7bcv928\", \"has_text\": true}\n  {\"text\": \"ups|conway construction\", \"has_text\": true}\n  {\"text\": \"none\", \"has_text\": false}"
         },
         "position": {
           "x": 220,

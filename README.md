@@ -341,7 +341,7 @@ Gemini's analysis doesn't just sit in the vFusion dashboard. The `verkada_helix_
 
 <p align="center"><img src="docs/images/helix-command-delivery.png" alt="Helix event — delivery" width="420"></p>
 
-**Text extraction (OCR)** — vFusion reads sign and label text off the frame…
+**Text extraction (OCR)** — vFusion reads sign, label, and badge text off a short clip…
 
 ![vFusion OCR run](docs/images/run-ocr.png)
 
