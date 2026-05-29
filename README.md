@@ -349,6 +349,10 @@ Gemini's analysis doesn't just sit in the vFusion dashboard. The `verkada_helix_
 
 <p align="center"><img src="docs/images/helix-command-ocr.png" alt="Helix event — OCR" width="420"></p>
 
+**Beyond cameras** — the Weather sentry pulls live conditions from OpenWeatherMap on a schedule and writes temp, humidity, pressure, visibility, and wind into a Helix event — so external data shows up right next to a camera in Command.
+
+<p align="center"><img src="docs/images/helix-command-weather.png" alt="Helix event — live weather conditions" width="420"></p>
+
 ## Help expand the taxonomy
 
 vFusion classifies inbound Verkada webhooks into families (camera / access / lpr / sensor / intercom / alarm / credential) using a built-in taxonomy. New webhook types ship from Verkada from time to time and won't be recognized until the table is updated.
