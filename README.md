@@ -105,6 +105,14 @@ cp .env.example .env
 
 That's it for setup. The encryption key (`FERNET_KEY`) generates itself on first backend boot and persists in the `vfusion_secrets` docker volume — you don't have to run anything. If you'd rather manage the key yourself (e.g. via 1Password), drop it into `.env` before starting the stack.
 
+> 🖥️ **Running on a server / homelab box and browsing from another machine?** The defaults assume the stack and your browser are on the *same* machine (`localhost`). If you'll open the dashboard from a different device (e.g. the app runs on a Proxmox box and you browse from your laptop), set these in `.env` to the host's LAN IP or hostname — otherwise the dashboard's browser tries to reach the API on *your* machine and the page can't connect:
+> ```
+> VITE_API_BASE=http://<host-ip>:18080       # where the dashboard sends API calls
+> CORS_ORIGINS=http://<host-ip>:15173        # origin the backend accepts requests from
+> PUBLIC_WEBHOOK_BASE=http://<host-ip>:18080  # webhook URL the UI shows you to paste
+> ```
+> Use the same `<host-ip>` (e.g. `192.168.1.50`) for all three, then reach the dashboard at `http://<host-ip>:15173` — not `localhost`. Keep these ports on your LAN/VPN; only `POST /hooks/verkada` should face the internet.
+
 > ⚠ **Back up the `vfusion_secrets` volume.** It holds the master key that encrypts every stored API key and signing secret. Losing it = losing all your stored credentials. `docker run --rm -v vfusion_secrets:/src -v $PWD:/dst alpine tar czf /dst/vfusion-secrets-backup.tar.gz -C /src .` exports it to a tarball.
 
 ---
