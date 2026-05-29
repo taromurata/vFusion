@@ -1,6 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
 
 import { apiGet, Flow, Taxonomy, TriggerField } from "../lib/api";
+import { useCameras } from "../lib/cameras";
 
 
 export interface TriggerConfigState {
@@ -187,13 +188,20 @@ export default function TriggerConfigForm({ value, onChange }: Props) {
                 <span className="text-slate-500 text-xs font-mono shrink-0">
                   ==
                 </span>
-                <input
-                  value={f.value}
-                  onChange={(e) => setFilter(i, { value: e.target.value })}
-                  className="flex-1 px-2 py-1 rounded bg-slate-950 border border-slate-700 text-sm font-mono"
-                  placeholder="value to match"
-                  spellCheck={false}
-                />
+                {f.field === "camera_id" ? (
+                  <CameraFilterValue
+                    value={f.value}
+                    onChange={(v) => setFilter(i, { value: v })}
+                  />
+                ) : (
+                  <input
+                    value={f.value}
+                    onChange={(e) => setFilter(i, { value: e.target.value })}
+                    className="flex-1 px-2 py-1 rounded bg-slate-950 border border-slate-700 text-sm font-mono"
+                    placeholder="value to match"
+                    spellCheck={false}
+                  />
+                )}
               </div>
             </div>
           ))}
@@ -210,6 +218,68 @@ export default function TriggerConfigForm({ value, onChange }: Props) {
           </button>
         </div>
       </Field>
+    </div>
+  );
+}
+
+
+/** Value input for a ``camera_id`` filter — a dropdown of synced
+ *  cameras (online by default) so the operator doesn't have to paste
+ *  a UUID. Falls back to a free-text box for pasting an id that isn't
+ *  in the synced list (offline, different org cache, etc.). Mirrors
+ *  the camera picker in the step config form. */
+function CameraFilterValue({
+  value,
+  onChange,
+}: {
+  value: string;
+  onChange: (v: string) => void;
+}) {
+  const cameras = useCameras();
+  const list = cameras.data ?? [];
+  const isOnline = (s: string | null | undefined) =>
+    !!s && s.toLowerCase() !== "offline";
+  const online = list.filter((c) => isOnline(c.status));
+  const offlineCount = list.length - online.length;
+  const sorted = [...online].sort((a, b) =>
+    (a.name ?? "").localeCompare(b.name ?? ""),
+  );
+  // If the saved value is an offline / unknown camera, keep it
+  // selectable so it isn't silently dropped.
+  const known = list.find((c) => c.camera_id === value);
+  return (
+    <div className="flex-1 space-y-1">
+      <select
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        className="w-full px-2 py-1 rounded bg-slate-950 border border-slate-700 text-sm"
+      >
+        <option value="">— pick a camera —</option>
+        {sorted.map((c) => (
+          <option key={c.camera_id} value={c.camera_id}>
+            {c.name ?? "(unnamed)"}
+            {c.site ? ` — ${c.site}` : ""}
+          </option>
+        ))}
+        {value && !online.some((c) => c.camera_id === value) && (
+          <option value={value}>
+            {known?.name ? `${known.name} (offline)` : value}
+          </option>
+        )}
+      </select>
+      <input
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        className="w-full px-2 py-1 rounded bg-slate-950 border border-slate-800 text-xs font-mono"
+        placeholder="or paste a camera_id UUID"
+        spellCheck={false}
+      />
+      {list.length > 0 && (
+        <div className="text-[10px] text-slate-500">
+          {online.length} online
+          {offlineCount > 0 ? ` · ${offlineCount} offline hidden` : ""}
+        </div>
+      )}
     </div>
   );
 }
