@@ -8,6 +8,7 @@ name: vfusion
 services:
   postgres:
     image: postgres:16-alpine
+    restart: unless-stopped
     environment:
       POSTGRES_USER: verkada
       POSTGRES_PASSWORD: verkada
@@ -22,6 +23,7 @@ services:
 
   redis:
     image: redis:7-alpine
+    restart: unless-stopped
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
       interval: 3s
@@ -31,6 +33,7 @@ services:
   backend:
     build:
       context: ./backend
+    restart: unless-stopped
     environment:
       DATABASE_URL: postgresql+asyncpg://verkada:verkada@postgres:5432/vfusion
       REDIS_URL: redis://redis:6379/0
@@ -66,10 +69,23 @@ services:
     command: >
       sh -c "alembic upgrade head &&
              uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload"
+    # Healthcheck hits the public /api/health endpoint (no auth, returns
+    # {"ok": true}). Lets `docker compose ps` show backend as healthy
+    # once migrations + uvicorn boot complete, and lets dependants
+    # (worker scheduled jobs, ops scripts) gate on actual readiness
+    # instead of just "container running". start_period covers the
+    # ~5-10s alembic upgrade on cold starts so we don't false-fail.
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://localhost:8000/api/health', timeout=2).status == 200 else 1)"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+      start_period: 20s
 
   worker:
     build:
       context: ./backend
+    restart: unless-stopped
     environment:
       DATABASE_URL: postgresql+asyncpg://verkada:verkada@postgres:5432/vfusion
       REDIS_URL: redis://redis:6379/0
@@ -143,6 +159,7 @@ services:
   frontend:
     build:
       context: ./frontend
+    restart: unless-stopped
     environment:
       VITE_API_BASE: ${VITE_API_BASE:-http://localhost:18080}
     ports:

@@ -10,6 +10,7 @@ import {
   ConnectionTypeSpec,
 } from "../lib/api";
 import { useBrand } from "../lib/brand";
+import { copyToClipboard } from "../lib/clipboard";
 import { PENDING_SIGNING_SECRET_KEY } from "../components/OnboardingGate";
 
 type FormMode =
@@ -723,7 +724,7 @@ function SecretInput({
   };
 
   const copy = async () => {
-    await navigator.clipboard.writeText(value);
+    await copyToClipboard(value);
     setCopied(true);
     window.setTimeout(() => setCopied(false), 1500);
   };

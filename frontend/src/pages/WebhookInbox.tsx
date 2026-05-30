@@ -12,6 +12,7 @@ import {
   WebhookEvent,
   WebhookEventListResponse,
 } from "../lib/api";
+import { copyToClipboard } from "../lib/clipboard";
 import JsonView from "../components/JsonView";
 import Redacted from "../components/Redacted";
 import { FamilyBadge, SignatureBadge } from "../components/Badges";
@@ -134,6 +135,18 @@ export default function WebhookInbox() {
   const total = list.data?.total ?? 0;
   const canLoadMore = items.length < total && limit < MAX_LIMIT;
 
+  // Pull the public webhook base from the same source the green banner
+  // uses, so the subhead and banner can't disagree. Loren hit this on
+  // his Pi: the banner correctly showed his tunnel URL while the
+  // subhead still advertised the LAN dashboard URL — confusing on a
+  // first install. Shared query key with WebhookEndpointBanner means
+  // this is a cache hit, not a second request.
+  const publicCfg = useQuery({
+    queryKey: ["public-config"],
+    queryFn: () => apiGet<PublicConfig>("/api/config"),
+  });
+  const exampleBase = publicCfg.data?.public_webhook_base || API_BASE;
+
   return (
     <div className="h-full flex flex-col gap-4 min-h-0">
       <div>
@@ -141,7 +154,7 @@ export default function WebhookInbox() {
         <p className="text-slate-400 text-sm mt-1">
           Every request to{" "}
           <code className="bg-slate-800 px-1.5 py-0.5 rounded text-slate-200">
-            {API_BASE}/hooks/&lt;anything&gt;
+            {exampleBase}/hooks/&lt;anything&gt;
           </code>{" "}
           is captured, classified, and signature-checked.
         </p>
@@ -347,9 +360,9 @@ function WebhookEndpointBanner() {
     ? "bg-amber-950/40 border-amber-900"
     : "bg-emerald-950/40 border-emerald-900";
   const accentText = ephemeral ? "text-amber-200" : "text-emerald-200";
-  const copy = () => {
+  const copy = async () => {
     if (!url) return;
-    navigator.clipboard.writeText(url);
+    await copyToClipboard(url);
     setCopied(true);
     setTimeout(() => setCopied(false), 1500);
   };

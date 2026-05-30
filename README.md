@@ -103,6 +103,8 @@ cd vFusion
 cp .env.example .env
 ```
 
+> Heads up: `.env` is a hidden file (leading dot). It won't show up in `ls`, Finder, or a stock VS Code file tree until you toggle hidden files on (`ls -a` on the CLI, `Cmd/Ctrl + Shift + .` in Finder, **View → Show Hidden Files** in your editor). If you don't see it after the `cp`, that's why — it copied successfully.
+
 That's it for setup. The encryption key (`FERNET_KEY`) generates itself on first backend boot and persists in the `vfusion_secrets` docker volume — you don't have to run anything. If you'd rather manage the key yourself (e.g. via 1Password), drop it into `.env` before starting the stack.
 
 #### Running on a server or homelab (browsing from another machine)
@@ -114,7 +116,7 @@ VITE_API_BASE=http://<host-ip>:18080   # where the dashboard sends API calls
 CORS_ORIGINS=http://<host-ip>:15173    # origin the backend accepts requests from
 ```
 
-Use the same `<host-ip>` (e.g. `192.168.1.50`) for both, then reach the dashboard at `http://<host-ip>:15173` — not `localhost`. After editing `.env`, recreate the containers (`docker compose up -d --force-recreate frontend backend`). Keep these ports on your LAN/VPN; only `POST /hooks/verkada` should ever face the internet.
+Use the same `<host-ip>` (e.g. `192.168.1.50`) for both, then reach the dashboard at `http://<host-ip>:15173` — not `localhost`. If you're editing `.env` *before* the first `docker compose up`, you're done — just start the stack normally. If the stack is already running, `docker compose up -d --force-recreate frontend backend` picks up the new values. Keep these ports on your LAN/VPN; only `POST /hooks/verkada` should ever face the internet.
 
 > ⚠ **Don't set `PUBLIC_WEBHOOK_BASE` to your LAN IP.** That env var controls the public webhook URL the dashboard tells you to paste into Verkada Command — Verkada's cloud needs to reach it *from the internet*, so it has to be a publicly-resolvable URL. In quick mode it's auto-detected from the TryCloudflare tunnel; in lab mode set it to your named-tunnel hostname (e.g. `https://hooks.yourdomain.com`), **not** the LAN IP. Leaving it unset is fine — the UI just falls back to the host IP, which is a useful hint but not a working public URL.
 
@@ -132,7 +134,7 @@ For trying the full Verkada → webhook → flow loop without configuring a doma
 docker compose --profile quick up --build -d
 ```
 
-First build takes ~2–3 min (image pulls + npm install + alembic migrations). Subsequent starts are seconds. Then open **http://localhost:15173** — the Webhook Explorer banner shows your trycloudflare URL within ~10 seconds.
+First build takes ~2–3 min (image pulls + npm install + alembic migrations). Subsequent starts are seconds. Then open **http://localhost:15173** — the welcome modal shows a **"Stack is healthy"** green callout once everything is running (your smoke test that Postgres / Redis / backend / worker / frontend all came up), and the Webhook Explorer banner shows your trycloudflare URL within ~10 seconds. If a service didn't come up, `docker compose logs --tail=50 -f <service>` is where to look.
 
 ### 2. Wire it into Verkada Command
 
@@ -162,33 +164,41 @@ The trycloudflare URL **changes every time `cloudflared` restarts**. You'd have 
 
 For always-on deploys with a stable URL. Requires a free Cloudflare account + a domain on Cloudflare.
 
-### 1. Create the Cloudflare tunnel (~5 min in the dashboard)
+> Order of operations: bring the stack up first, then create the Cloudflare tunnel. The Cloudflare UI wants you to verify the tunnel is "Healthy" before saving — that can't happen until the backend container is already running and listening.
+
+### 1. Start the stack (without the tunnel)
+
+Bring up everything except `cloudflared` so the backend is listening on `localhost:18080` while you wire Cloudflare up:
+
+```bash
+docker compose up --build -d
+```
+
+Open **http://localhost:15173** (or `http://<host-ip>:15173` for a remote-host setup) and confirm you see the **"Stack is healthy"** green callout in the welcome modal. That's your smoke test — Postgres, Redis, backend, worker, and frontend are all running. If any service is failing, `docker compose logs --tail=50 -f <service>` is where to look.
+
+### 2. Create the Cloudflare tunnel (~5 min in the dashboard)
 
 1. Sign in to the [Cloudflare Zero Trust dashboard](https://one.dash.cloudflare.com/).
-2. Navigate to **Networks** → **Tunnels** → **Create a tunnel**.
-3. Choose **Cloudflared** as the connector type → **Next**.
-4. Name the tunnel `vfusion` → **Save tunnel**.
-5. The next screen shows install commands. **Copy the token** — the long string starting with `eyJhIjoi...`. Ignore the install commands; our `docker-compose.yml` runs `cloudflared` for you. Click **Next**.
-6. On the **Public Hostnames** tab, click **Add a public hostname**:
+2. Navigate to **Networks** → **Tunnels** → **Create a tunnel** → pick **Cloudflared** → **Next**.
+3. Name the tunnel `vfusion` → **Save tunnel**. (Cloudflare's UI jumps you straight to the name field — there's no separate "connector type" step in the current dashboard.)
+4. The next screen shows per-OS install commands. **You don't need to install anything** — our `docker-compose.yml` runs `cloudflared` in a container for you. Just **copy the token** out of one of the install commands — it's the long string after `--token` starting with `eyJhIjoi...`. Click **Next**.
+5. On the **Add a public hostname** screen (also reachable later under the tunnel's **Routes** tab → **Published application routes**):
    - **Subdomain**: `hooks`
    - **Domain**: pick the domain you added to Cloudflare
-   - **Path**: `hooks/*` ← important: limits public exposure to webhook endpoints only
-   - **Service** → **Type**: `HTTP` → **URL**: `backend:8000`
-7. **Save hostname**. Your public URL is now `https://hooks.yourdomain.com/hooks/verkada`.
+   - **Path**: leave **blank**. (The field now uses regex syntax — `^/hooks/` would also work, but blank is simpler and Caddy / the backend already path-filter on their side in quick mode, while lab mode's exposure is locked down by what the tunnel publishes.)
+   - **Service** → **Type**: `HTTP` → **URL**:
+     - If you're running `cloudflared` from the bundled docker-compose profile (the normal path): `backend:8000`
+     - If you installed `cloudflared` standalone on the host instead: `http://<host-ip>:18080`
+6. **Save hostname**. Your public URL is now `https://hooks.yourdomain.com/hooks/verkada`.
 
 > ⚠ **Turn off "Bot Fight Mode" for this domain** (Cloudflare → your domain → **Security** → **Bots**). It's on by default and silently blocks Verkada's webhook senders as suspected bot traffic, so events never reach the tunnel and never land in the Webhook Explorer. If you want bot protection, leave Bot Fight Mode on but add a **WAF Skip rule** for the `/hooks/*` path so Verkada's POSTs pass through.
 
-### 2. Add the token to `.env`
+### 3. Add the token to `.env` and bring `cloudflared` up
 
 ```bash
 cd ~/vFusion
 echo "CF_TUNNEL_TOKEN=<paste-token-here>" >> .env
-```
-
-### 3. Start the stack
-
-```bash
-docker compose --profile cloudflared up --build -d
+docker compose --profile cloudflared up -d
 ```
 
 Verify the tunnel connected:
@@ -197,7 +207,7 @@ Verify the tunnel connected:
 docker compose logs cloudflared | grep -i "registered tunnel connection"
 ```
 
-You should see 2–4 lines (Cloudflare connects to multiple POPs for redundancy).
+You should see 2–4 lines (Cloudflare connects to multiple POPs for redundancy). Back in the Cloudflare dashboard, the tunnel's status should now read **Healthy**.
 
 ### 4. Configure the webhook in Verkada Command
 

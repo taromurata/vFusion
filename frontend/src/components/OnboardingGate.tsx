@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 
 import { apiGet, apiPost, PublicConfig } from "../lib/api";
+import { copyToClipboard } from "../lib/clipboard";
 import Redacted from "./Redacted";
 
 // react-query key for the onboarding poll. Exported so the Skip button
@@ -82,9 +83,9 @@ function OnboardingModal({ cfg }: { cfg: PublicConfig }) {
   // (Implemented via a key-change in the parent — here we just render
   // the gated state.)
 
-  const copy = () => {
+  const copy = async () => {
     if (!url) return;
-    navigator.clipboard.writeText(url);
+    await copyToClipboard(url);
     setCopied(true);
     setTimeout(() => setCopied(false), 1500);
   };
@@ -219,7 +220,7 @@ function TunnelModeBody({
   };
   const handleCopySecret = async () => {
     if (!secret) return;
-    await navigator.clipboard.writeText(secret);
+    await copyToClipboard(secret);
     setSecretCopied(true);
     window.setTimeout(() => setSecretCopied(false), 1500);
   };
