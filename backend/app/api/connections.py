@@ -42,10 +42,10 @@ router = APIRouter(prefix="/api/connections", tags=["connections"])
 CONNECTION_TYPES: dict[str, dict[str, Any]] = {
     "gemini": {
         "label": "Google Gemini",
-        "description": "Gemini API key for video / image analysis actions.",
+        "description": "Gemini API key for video / image analysis actions. ⚠ Free-tier keys (no billing on the linked Google Cloud project) let Google use your camera frames, clips, and prompts to train models — including human review. For production cameras, enable billing on the AI Studio project; the paid-tier contract excludes training + human review. See https://ai.google.dev/gemini-api/terms.",
         "required_for_setup": "api_key",
         "fields": [
-            {"name": "api_key", "label": "Gemini API key", "type": "secret", "required": True, "help": "From https://aistudio.google.com/apikey — used by the Gemini video analysis action."},
+            {"name": "api_key", "label": "Gemini API key", "type": "secret", "required": True, "help": "From https://aistudio.google.com/apikey — used by the Gemini video analysis action. For production cameras, enable billing on the linked Google Cloud project so your footage isn't used for Google's model training (see connection description above + https://ai.google.dev/gemini-api/terms)."},
         ],
     },
     "openweathermap": {
