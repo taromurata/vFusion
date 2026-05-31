@@ -136,11 +136,11 @@ export default function WebhookInbox() {
   const canLoadMore = items.length < total && limit < MAX_LIMIT;
 
   // Pull the public webhook base from the same source the green banner
-  // uses, so the subhead and banner can't disagree. Loren hit this on
-  // his Pi: the banner correctly showed his tunnel URL while the
-  // subhead still advertised the LAN dashboard URL — confusing on a
-  // first install. Shared query key with WebhookEndpointBanner means
-  // this is a cache hit, not a second request.
+  // uses, so the subhead and banner can't disagree. Otherwise on a
+  // homelab-style install the banner correctly shows the tunnel URL
+  // while this subhead advertises the LAN dashboard URL — confusing
+  // on a first install. Shared query key with WebhookEndpointBanner
+  // means this is a cache hit, not a second request.
   const publicCfg = useQuery({
     queryKey: ["public-config"],
     queryFn: () => apiGet<PublicConfig>("/api/config"),
