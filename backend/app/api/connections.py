@@ -65,7 +65,26 @@ CONNECTION_TYPES: dict[str, dict[str, Any]] = {
             {"name": "org_id", "label": "Verkada Org ID", "type": "text", "required": True, "help": f"UUID, e.g. fe46589d-cb2a-4bee-… Auto-filled when {BRAND_NAME} detects a new org from an incoming webhook."},
             {"name": "api_key", "label": "API key", "type": "secret", "required": False, "help": "Needed for action nodes (door unlock, post Helix events, etc.). You can save the form without it and come back later — the connection just won't be \"setup_complete\" until you add it. The pending-setup banner sticks around as a reminder."},
             {"name": "webhook_signing_secret", "label": "Webhook signing secret", "type": "secret", "required": False, "generate": True, "help": "Optional but recommended. Click Generate, copy the value, and paste it into Verkada Command → Webhooks → Shared secret. The same value lives on both sides — it's just an HMAC key that lets us verify each webhook came from your Verkada org."},
-            {"name": "region", "label": "API region (EU / other non-US orgs)", "type": "text", "required": False, "help": "Leave blank for US orgs (default: https://api.verkada.com). For EU orgs, set this to https://api.eu.verkada.com — otherwise camera streaming, footage, doors, and Helix calls will all fail with cryptic 4xx errors. The hostname alone (api.eu.verkada.com) is accepted too; https:// is added automatically. See https://apidocs.verkada.com/reference/service-regions for other regions."},
+            {
+                "name": "region",
+                "label": "API region",
+                "type": "select",
+                "required": False,
+                # Canonical list per Verkada's Service Regions docs:
+                # https://apidocs.verkada.com/reference/service-regions.
+                # Order = US first (the documented default + the
+                # overwhelming majority of orgs), then EU / AU / Gov
+                # in the order they appear on Verkada's page. The empty
+                # string means "no override" — the runtime falls back
+                # to https://api.verkada.com via normalize_base_url().
+                "options": [
+                    {"label": "United States (default)",   "value": ""},
+                    {"label": "European Union",            "value": "https://api.eu.verkada.com"},
+                    {"label": "Australia",                 "value": "https://api.au.verkada.com"},
+                    {"label": "GovCloud Organizations",    "value": "https://api.verkadagov.com"},
+                ],
+                "help": "Verkada's API is region-locked — your org lives in one of these four regions and the API key only authenticates against that region's hostname. Pick the wrong one and every call (camera streaming, footage, doors, Helix, sync) fails with a 401/403. If you don't know which region your org is in, check Verkada Command → org settings, or ask whoever provisioned the org. See https://apidocs.verkada.com/reference/service-regions.",
+            },
         ],
     }
 }

@@ -7,6 +7,7 @@ import {
   apiPost,
   apiPut,
   Connection,
+  ConnectionFieldSpec,
   ConnectionTypeSpec,
 } from "../lib/api";
 import { useBrand } from "../lib/brand";
@@ -635,14 +636,24 @@ function ConnectionFormModal({
 
         {visibleFields.map((f) => (
           <Field key={f.name} label={f.label} help={f.help} required={f.required}>
-            <SecretInput
-              spec={f}
-              value={values[f.name] ?? ""}
-              onChange={(next) =>
-                setValues((v) => ({ ...v, [f.name]: next }))
-              }
-              isFinish={isExisting}
-            />
+            {f.type === "select" ? (
+              <SelectInput
+                spec={f}
+                value={values[f.name] ?? ""}
+                onChange={(next) =>
+                  setValues((v) => ({ ...v, [f.name]: next }))
+                }
+              />
+            ) : (
+              <SecretInput
+                spec={f}
+                value={values[f.name] ?? ""}
+                onChange={(next) =>
+                  setValues((v) => ({ ...v, [f.name]: next }))
+                }
+                isFinish={isExisting}
+              />
+            )}
           </Field>
         ))}
 
@@ -705,7 +716,7 @@ function SecretInput({
   onChange,
   isFinish,
 }: {
-  spec: { name: string; type: "text" | "secret"; generate?: boolean };
+  spec: ConnectionFieldSpec;
   value: string;
   onChange: (next: string) => void;
   isFinish: boolean;
@@ -774,6 +785,53 @@ function SecretInput({
         </>
       )}
     </div>
+  );
+}
+
+
+/**
+ * Dropdown rendering for `select`-type connection fields. The current
+ * (and only) consumer is Verkada's region field, but the component is
+ * generic so future enum-y fields can reuse it.
+ *
+ * Legacy-value handling: pre-dropdown installs let users type any
+ * hostname into the region field (e.g. ``api.eu.verkada.com`` without
+ * the scheme). If the stored value doesn't match any canonical option
+ * exactly, we prepend it as an extra "Custom (legacy): <value>" option
+ * so we don't silently drop the stored setting on first form load —
+ * the user can re-pick a canonical region from the dropdown if they
+ * want to migrate, but their existing config keeps working until they
+ * do. ``normalize_base_url()`` in the backend client handles the bare-
+ * hostname case at runtime, so even legacy values still route
+ * correctly while showing in the form.
+ */
+function SelectInput({
+  spec,
+  value,
+  onChange,
+}: {
+  spec: ConnectionFieldSpec;
+  value: string;
+  onChange: (next: string) => void;
+}) {
+  const options = spec.options ?? [];
+  const matchesCanonical = options.some((o) => o.value === value);
+  const showLegacy = !!value && !matchesCanonical;
+  return (
+    <select
+      value={value}
+      onChange={(e) => onChange(e.target.value)}
+      className="w-full px-2 py-1.5 rounded bg-white/5 border border-white/15 focus:outline-none focus:border-sky-500 text-sm"
+    >
+      {showLegacy && (
+        <option value={value}>{`Custom (legacy): ${value}`}</option>
+      )}
+      {options.map((o) => (
+        <option key={o.value} value={o.value}>
+          {o.label}
+        </option>
+      ))}
+    </select>
   );
 }
 

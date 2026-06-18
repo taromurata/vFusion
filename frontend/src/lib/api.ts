@@ -153,7 +153,7 @@ export interface UnrecognizedGroup {
 export interface ConnectionFieldSpec {
   name: string;
   label: string;
-  type: "text" | "secret";
+  type: "text" | "secret" | "select";
   required: boolean;
   help?: string;
   // If true, the form renders a "Generate" button next to the input
@@ -161,6 +161,11 @@ export interface ConnectionFieldSpec {
   // button once the field has a value. For shared-secret-style fields
   // where the user has to paste the same value into both systems.
   generate?: boolean;
+  // Present when type === "select" — drives a dropdown with these as
+  // its <option>s. value is what gets stored in the secret; label is
+  // what the user sees. Used by Verkada's region field so operators
+  // pick from US / EU / AU / GovCloud instead of typing a hostname.
+  options?: { label: string; value: string }[];
 }
 
 export interface ConnectionTypeSpec {
