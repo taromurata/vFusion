@@ -39,11 +39,14 @@ from app.models import Connection, Run, VerkadaHelixEventType
 logger = logging.getLogger(__name__)
 
 
-# Cap matches what Gemini's file API will reasonably accept inline +
-# what we can expect a homelab laptop to upload without it feeling
-# painful. The backend bounces anything larger so the user gets a clean
-# error instead of a 30-second wait into a Gemini rejection.
-DRY_RUN_MAX_BYTES = 50 * 1024 * 1024  # 50 MB
+# Cap covers the size of footage operators actually want to test —
+# longer clips off a Verkada camera regularly land in the 50-150 MB
+# range, so 50 MB was clipping the common case. Gemini's File API
+# accepts up to ~2 GB; the practical bound here is upload time from
+# a laptop. 200 MB is ~30s on a typical home connection — slow enough
+# that we don't want to allow unbounded but fast enough that real
+# clips work without a "trim it first" friction step.
+DRY_RUN_MAX_BYTES = 200 * 1024 * 1024  # 200 MB
 
 # Allow common image + video mime types. We don't try to police every
 # extension — Gemini will tell us if it can't handle the actual bytes.

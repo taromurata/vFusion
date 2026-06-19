@@ -478,12 +478,23 @@ export default function Byoa() {
         credentials: "include",
       });
       if (!res.ok) {
-        let detail = "";
-        try {
-          const body = (await res.json()) as { detail?: string };
-          detail = body.detail ?? "";
-        } catch {
-          detail = await res.text();
+        // Read the body once as text — calling res.json() then
+        // res.text() in a catch hits "body stream already read"
+        // because a Response body can only be consumed once. Parse the
+        // text as JSON afterwards so we still surface FastAPI's
+        // ``{detail: "..."}`` cleanly, falling back to the raw text
+        // (or a generic status message) when the body isn't JSON.
+        const raw = await res.text().catch(() => "");
+        let detail = raw;
+        if (raw) {
+          try {
+            const parsed = JSON.parse(raw) as { detail?: unknown };
+            if (typeof parsed.detail === "string" && parsed.detail.trim()) {
+              detail = parsed.detail;
+            }
+          } catch {
+            /* raw text is the detail */
+          }
         }
         throw new Error(detail || `Dry-run failed (${res.status})`);
       }
@@ -580,7 +591,7 @@ export default function Byoa() {
           <Field
             label="Upload file"
             required
-            help="MP4 / MOV / WebM video or JPG / PNG / WebP image. 50 MB max. The file is sent to Gemini and discarded — nothing is stored, nothing is posted to Helix."
+            help="MP4 / MOV / WebM video or JPG / PNG / WebP image. 200 MB max. The file is sent to Gemini and discarded — nothing is stored, nothing is posted to Helix."
           >
             <input
               type="file"
