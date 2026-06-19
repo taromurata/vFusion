@@ -167,6 +167,19 @@ export default function Byoa() {
     staleTime: 60_000,
   });
 
+  // Per-model pricing for the cost estimate. Backend re-seeds these
+  // from the published Google rates on every boot, so the data rarely
+  // changes mid-session — long staleTime keeps the form snappy and
+  // avoids polling.
+  const pricing = useQuery({
+    queryKey: ["gemini-pricing"],
+    queryFn: () =>
+      apiGet<
+        { model: string; input_per_1m_usd: number; output_per_1m_usd: number }[]
+      >("/api/byoa/pricing"),
+    staleTime: 5 * 60_000,
+  });
+
   // ``source`` toggles the top-level input: a real Verkada camera
   // (default, full BYOA flow with a Run row) vs an uploaded MP4 / image
   // (dry-run only, no Run row, no Helix POST). The two modes share the
@@ -174,6 +187,14 @@ export default function Byoa() {
   // disjoint inputs and disjoint output panels.
   const [source, setSource] = useState<"camera" | "upload">("camera");
   const [uploadFile, setUploadFile] = useState<File | null>(null);
+  // Duration of the uploaded video in seconds, probed client-side via
+  // an HTML5 <video> ``loadedmetadata`` event. Drives the cost
+  // estimate (Gemini bills per second of video tokens, not per byte).
+  // Null while we don't know yet; 0 for image uploads (handled by the
+  // estimate as a fixed-per-image cost).
+  const [uploadDurationSec, setUploadDurationSec] = useState<number | null>(
+    null,
+  );
   // Result of the most recent dry-run analysis. Held in component
   // state (not react-query) because dry-runs are one-shot — there's
   // nothing meaningful to refetch and persisting between mode toggles
@@ -600,12 +621,42 @@ export default function Byoa() {
                 const f = e.target.files?.[0] ?? null;
                 setUploadFile(f);
                 setDryRunResult(null);
+                setUploadDurationSec(null);
+                if (f && f.type.startsWith("video/")) {
+                  // Probe video duration so the cost estimate is real
+                  // (Gemini bills per second of video tokens, not per
+                  // byte). HTMLVideoElement.duration becomes available
+                  // once metadata loads — usually within a few hundred
+                  // ms for any well-formed MP4 / MOV. We never render
+                  // the <video> itself; it's just a metadata sniffer.
+                  const url = URL.createObjectURL(f);
+                  const v = document.createElement("video");
+                  v.preload = "metadata";
+                  v.onloadedmetadata = () => {
+                    setUploadDurationSec(
+                      Number.isFinite(v.duration) ? v.duration : null,
+                    );
+                    URL.revokeObjectURL(url);
+                  };
+                  v.onerror = () => {
+                    URL.revokeObjectURL(url);
+                  };
+                  v.src = url;
+                } else if (f) {
+                  // Image upload — bills as a single frame, no
+                  // duration involved. Tell the estimate to use its
+                  // image branch by setting 0.
+                  setUploadDurationSec(0);
+                }
               }}
               className="block w-full text-sm text-slate-300 file:mr-3 file:py-1.5 file:px-3 file:rounded file:border-0 file:bg-sky-700 file:hover:bg-sky-600 file:text-white file:text-sm file:cursor-pointer"
             />
             {uploadFile && (
               <div className="text-[11px] text-slate-400 mt-1.5">
                 {uploadFile.name} — {(uploadFile.size / (1024 * 1024)).toFixed(1)} MB
+                {uploadDurationSec != null && uploadDurationSec > 0 && (
+                  <> · {formatDuration(uploadDurationSec)} of video</>
+                )}
               </div>
             )}
           </Field>
@@ -778,6 +829,7 @@ export default function Byoa() {
             Field rather than mirroring the camera-mode Row layout
             because upload mode has nothing else to put next to it. */}
         {source === "upload" && (
+          <>
           <Field label="Model" required>
             <div className="space-y-1.5">
               <select
@@ -810,6 +862,13 @@ export default function Byoa() {
               })()}
             </div>
           </Field>
+          <CostEstimate
+            model={model}
+            durationSec={uploadDurationSec}
+            pricing={pricing.data ?? null}
+            hasFile={!!uploadFile}
+          />
+          </>
         )}
 
         <Field label="Prompt" required>
@@ -1409,6 +1468,155 @@ function DryRunResultPanel({
           </div>
         </Card>
       )}
+    </div>
+  );
+}
+
+
+/**
+ * Live cost-estimate panel for the Workbench upload mode.
+ *
+ * Gemini bills by *tokens*, not bytes. For media that means roughly:
+ *
+ *   - **Video** (default media resolution): ~263 tokens per second of
+ *     video. So a 60-second clip ≈ 16k input tokens before any prompt.
+ *   - **Image**: ~258 tokens per image, regardless of pixel count
+ *     (Gemini downsamples to a fixed budget).
+ *
+ * We add a small prompt-token allowance (~1k, a reasonable ceiling for
+ * the analyze prompts the templates ship with) and assume ~500 output
+ * tokens (most templates request short structured JSON). The display
+ * shows the breakdown so an operator can see *why* one model is 10× the
+ * cost of another and pick accordingly.
+ *
+ * These are explicit estimates — the post-run Stats page reports the
+ * actual numbers from Gemini's usage_metadata. We label as
+ * "estimated" everywhere to keep the contract honest.
+ */
+const VIDEO_TOKENS_PER_SEC = 263;
+const IMAGE_TOKENS = 258;
+const PROMPT_TOKEN_BUDGET = 1000;
+const OUTPUT_TOKEN_BUDGET = 500;
+
+
+function formatDuration(secs: number): string {
+  if (secs < 60) return `${secs.toFixed(1)}s`;
+  const m = Math.floor(secs / 60);
+  const s = Math.round(secs - m * 60);
+  return s === 0 ? `${m}m` : `${m}m ${s}s`;
+}
+
+
+function formatCost(usd: number): string {
+  if (usd < 0.01) return `< $0.01`;
+  if (usd < 1) return `$${usd.toFixed(3)}`;
+  return `$${usd.toFixed(2)}`;
+}
+
+
+function CostEstimate({
+  model,
+  durationSec,
+  pricing,
+  hasFile,
+}: {
+  model: string;
+  durationSec: number | null;
+  pricing:
+    | { model: string; input_per_1m_usd: number; output_per_1m_usd: number }[]
+    | null;
+  hasFile: boolean;
+}) {
+  // Show a soft placeholder when there's no file yet so the line item
+  // is discoverable even before the operator picks anything.
+  if (!hasFile) {
+    return (
+      <div className="text-[11px] text-slate-500 italic mt-1.5">
+        Pick a file to see the estimated cost.
+      </div>
+    );
+  }
+
+  // Probing video duration takes a tick after the file lands. Hold
+  // the slot so the layout doesn't jump when the value populates.
+  if (durationSec === null) {
+    return (
+      <div className="text-[11px] text-slate-500 italic mt-1.5">
+        Reading file metadata…
+      </div>
+    );
+  }
+
+  const row = pricing?.find((p) => p.model === model);
+  if (!row) {
+    // Pricing didn't load (offline first boot before the cron seeded,
+    // unrecognized model, etc.). Don't pretend to estimate — telling
+    // the user nothing is better than telling them $0.
+    return (
+      <div className="text-[11px] text-slate-500 italic mt-1.5">
+        No pricing data on file for {model} — try again after the daily
+        pricing refresh.
+      </div>
+    );
+  }
+
+  const isVideo = durationSec > 0;
+  const mediaTokens = isVideo
+    ? Math.ceil(durationSec * VIDEO_TOKENS_PER_SEC)
+    : IMAGE_TOKENS;
+  const inputTokens = mediaTokens + PROMPT_TOKEN_BUDGET;
+  const inputCost = (inputTokens / 1_000_000) * row.input_per_1m_usd;
+  const outputCost =
+    (OUTPUT_TOKEN_BUDGET / 1_000_000) * row.output_per_1m_usd;
+  const total = inputCost + outputCost;
+
+  return (
+    <div className="mt-2 rounded-md border border-white/10 bg-white/5 px-3 py-2 text-[11px] text-slate-300 space-y-1">
+      <div className="flex items-center justify-between gap-2">
+        <span className="font-semibold text-slate-100">
+          Estimated cost: ~{formatCost(total)}
+        </span>
+        <span className="text-[10px] text-slate-500 italic">
+          per run · pre-discount estimate
+        </span>
+      </div>
+      <div className="font-mono text-[10.5px] text-slate-400 leading-relaxed">
+        {isVideo ? (
+          <>
+            {mediaTokens.toLocaleString()} video tokens
+            {" "}
+            <span className="text-slate-500">({durationSec.toFixed(1)}s × {VIDEO_TOKENS_PER_SEC}/s)</span>
+            {" + "}
+            {PROMPT_TOKEN_BUDGET.toLocaleString()} prompt
+            {" → "}
+            {formatCost(inputCost)}{" "}
+            <span className="text-slate-500">
+              (${row.input_per_1m_usd.toFixed(2)}/M)
+            </span>
+          </>
+        ) : (
+          <>
+            {IMAGE_TOKENS.toLocaleString()} image tokens + {PROMPT_TOKEN_BUDGET.toLocaleString()} prompt
+            {" → "}
+            {formatCost(inputCost)}{" "}
+            <span className="text-slate-500">
+              (${row.input_per_1m_usd.toFixed(2)}/M)
+            </span>
+          </>
+        )}
+      </div>
+      <div className="font-mono text-[10.5px] text-slate-400 leading-relaxed">
+        ~{OUTPUT_TOKEN_BUDGET} output tokens
+        {" → "}
+        {formatCost(outputCost)}{" "}
+        <span className="text-slate-500">
+          (${row.output_per_1m_usd.toFixed(2)}/M)
+        </span>
+      </div>
+      <div className="text-[10px] text-slate-500 italic pt-0.5">
+        Actual cost shows up on the Stats page after the run. Google's
+        billing is the source of truth.
+      </div>
     </div>
   );
 }

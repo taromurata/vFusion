@@ -33,7 +33,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.crypto import decrypt_secret
 from app.db import get_session
-from app.models import Connection, Run, VerkadaHelixEventType
+from app.models import Connection, GeminiPricing, Run, VerkadaHelixEventType
 
 
 logger = logging.getLogger(__name__)
@@ -419,6 +419,39 @@ class DryRunResponse(BaseModel):
     gemini: DryRunGeminiResult
     helix_preview: DryRunHelixPreview | None = None
     media_kind: Literal["video", "image"]
+
+
+# ─────────────────────────── /pricing ───────────────────────────
+#
+# The Workbench surfaces a live cost estimate next to the Model picker
+# (so the operator sees what a run would cost before they hit Brew / Run
+# dry-run). The Stats page already returns this same data inside a
+# bigger blob; this endpoint is a lightweight subset so the form
+# doesn't have to fetch (and refresh) all of stats just to look up two
+# numbers.
+
+
+class PricingEntry(BaseModel):
+    model: str
+    input_per_1m_usd: float
+    output_per_1m_usd: float
+
+
+@router.get("/pricing", response_model=list[PricingEntry])
+async def get_pricing(
+    session: AsyncSession = Depends(get_session),
+) -> list[PricingEntry]:
+    rows = (
+        await session.execute(select(GeminiPricing).order_by(GeminiPricing.model))
+    ).scalars().all()
+    return [
+        PricingEntry(
+            model=r.model,
+            input_per_1m_usd=float(r.input_per_1m_usd),
+            output_per_1m_usd=float(r.output_per_1m_usd),
+        )
+        for r in rows
+    ]
 
 
 @router.post("/dry-run", response_model=DryRunResponse)
