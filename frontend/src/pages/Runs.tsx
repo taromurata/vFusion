@@ -496,17 +496,34 @@ function StepCard({
 // "yes, the right values reached Helix" at a glance, without
 // expanding the step + drilling into request_body.
 function HelixPostSummary({ steps }: { steps: RunStep[] }) {
+  // Two flavors of step land here:
+  //   - real ``verkada_helix_event`` posts (camera-mode flows + the
+  //     existing BYOA "Post to Helix" path)
+  //   - ``verkada_helix_event_preview`` dry-run steps emitted by the
+  //     upload-mode BYOA worker — same shape (output.request_body),
+  //     but no actual POST happened.
+  // Render both in the same panel so the operator's mental model is
+  // "this is what reached / would have reached Helix"; the dry-run
+  // variant gets a distinct amber header + "DRY RUN — not posted"
+  // chip so it can't be mistaken for a real post.
   const helixSteps = steps.filter((s) => {
-    if (s.type !== "verkada_helix_event") return false;
+    const isPreview = s.type === "verkada_helix_event_preview";
+    const isPost = s.type === "verkada_helix_event";
+    if (!isPreview && !isPost) return false;
     if (s.status !== "success") return false;
     const out = s.output as Record<string, unknown> | null | undefined;
     const body = out?.request_body as Record<string, unknown> | null | undefined;
     return body && typeof body === "object" && "attributes" in body;
   });
   if (helixSteps.length === 0) return null;
+  const anyPreview = helixSteps.some(
+    (s) => s.type === "verkada_helix_event_preview",
+  );
   return (
     <div>
-      <SectionTitle>Posted to Helix</SectionTitle>
+      <SectionTitle>
+        {anyPreview ? "Helix preview (dry run — not posted)" : "Posted to Helix"}
+      </SectionTitle>
       <div className="space-y-2">
         {helixSteps.map((s, i) => {
           const out = s.output as Record<string, unknown>;
@@ -522,15 +539,30 @@ function HelixPostSummary({ steps }: { steps: RunStep[] }) {
             | undefined;
           const statusCode =
             typeof resp?.status_code === "number" ? resp.status_code : null;
+          const isPreview = s.type === "verkada_helix_event_preview";
+          // Switch the entire card palette on preview so it can't be
+          // visually mistaken for a real Helix post — amber instead of
+          // emerald, plus a chip in the header to remove any ambiguity.
+          const cardClass = isPreview
+            ? "bg-amber-950/30 border border-amber-900/60 rounded p-3"
+            : "bg-emerald-950/30 border border-emerald-900/60 rounded p-3";
+          const headerClass = isPreview
+            ? "flex items-center gap-2 text-xs text-amber-300 mb-2"
+            : "flex items-center gap-2 text-xs text-emerald-300 mb-2";
+          const attrLabelClass = isPreview
+            ? "font-mono text-amber-300"
+            : "font-mono text-emerald-300";
           return (
-            <div
-              key={`${s.name}-${i}`}
-              className="bg-emerald-950/30 border border-emerald-900/60 rounded p-3"
-            >
-              <div className="flex items-center gap-2 text-xs text-emerald-300 mb-2">
-                <span>🧬</span>
+            <div key={`${s.name}-${i}`} className={cardClass}>
+              <div className={headerClass}>
+                <span>{isPreview ? "🧪" : "🧬"}</span>
                 <span className="font-medium">{heading}</span>
-                {statusCode !== null && (
+                {isPreview && (
+                  <span className="text-[9px] font-bold tracking-wider px-1.5 py-0.5 rounded bg-amber-500/20 text-amber-200 border border-amber-500/40">
+                    DRY RUN — NOT POSTED
+                  </span>
+                )}
+                {statusCode !== null && !isPreview && (
                   <span className="text-[10px] text-slate-400">
                     · HTTP {statusCode}
                   </span>
@@ -538,7 +570,12 @@ function HelixPostSummary({ steps }: { steps: RunStep[] }) {
               </div>
               <dl className="grid grid-cols-[max-content_1fr] gap-x-3 gap-y-1 text-xs">
                 {Object.entries(attrs).map(([k, v]) => (
-                  <FragmentRow key={k} k={k} v={v} />
+                  <FragmentRow
+                    key={k}
+                    k={k}
+                    v={v}
+                    keyClassName={attrLabelClass}
+                  />
                 ))}
               </dl>
             </div>
@@ -549,14 +586,22 @@ function HelixPostSummary({ steps }: { steps: RunStep[] }) {
   );
 }
 
-function FragmentRow({ k, v }: { k: string; v: unknown }) {
+function FragmentRow({
+  k,
+  v,
+  keyClassName,
+}: {
+  k: string;
+  v: unknown;
+  keyClassName?: string;
+}) {
   const rendered =
     typeof v === "string" || typeof v === "number" || typeof v === "boolean"
       ? String(v)
       : JSON.stringify(v);
   return (
     <>
-      <dt className="font-mono text-emerald-300">{k}</dt>
+      <dt className={keyClassName ?? "font-mono text-emerald-300"}>{k}</dt>
       <dd className="text-slate-100 break-words">{rendered}</dd>
     </>
   );

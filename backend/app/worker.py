@@ -742,9 +742,226 @@ async def refresh_gemini_pricing_cron(ctx: dict[str, Any]) -> dict[str, Any]:  #
     return await refresh_gemini_pricing()
 
 
+async def run_byoa_upload(ctx: dict[str, Any], run_id: str) -> dict[str, Any]:  # noqa: ARG001
+    """BYOA upload-mode entry point — same shape as ``run_byoa`` but the
+    media comes from a file the user uploaded (sitting on the
+    ``webhook_assets`` shared volume), not from a Verkada camera.
+
+    Pipeline:
+      1. ``byoa`` step: upload the file to Gemini, poll until ACTIVE,
+         generate_content with the operator's prompt. Output mirrors
+         ``gemini_analyze_camera`` (.text, .json) so the Runs page
+         renders the result identically.
+      2. ``helix_preview`` step (only when the operator picked a
+         paired prompt template): compute the JSON payload the real
+         verkada_helix_event action *would have* POSTed, using the
+         same auto-fan-out logic as the camera-mode worker. Emitted
+         with ``type: "verkada_helix_event_preview"`` so the Runs
+         page can render a distinct "would have posted — dry run"
+         card.
+
+    No Helix POST ever fires. The uploaded file is deleted at the end
+    of the run regardless of success or failure.
+    """
+    import asyncio
+    from app.api.byoa import (
+        _analyze_with_gemini_sync,
+        _compute_helix_preview,
+    )
+    from app.crypto import decrypt_secret
+
+    async with SessionLocal() as session:
+        run = await session.get(Run, UUID(run_id))
+        if run is None:
+            return {"error": f"run {run_id} not found"}
+        params = run.input or {}
+        if not isinstance(params, dict) or not params.get("byoa_upload"):
+            run.status = "failed"
+            run.error = "byoa_upload params missing"
+            run.finished_at = _utcnow()
+            await session.commit()
+            return {"error": run.error}
+
+        source_path = Path(params.get("source_path") or "")
+        if not source_path.exists():
+            run.status = "failed"
+            run.error = f"uploaded source file missing: {source_path}"
+            run.finished_at = _utcnow()
+            await session.commit()
+            return {"error": run.error}
+
+        # Resolve the Gemini API key.
+        try:
+            gemini_conn_id = UUID(params["gemini_connection_id"])
+        except (KeyError, ValueError):
+            run.status = "failed"
+            run.error = "invalid gemini_connection_id"
+            run.finished_at = _utcnow()
+            source_path.unlink(missing_ok=True)
+            await session.commit()
+            return {"error": run.error}
+        gemini_conn = await _resolve_connection(session, str(gemini_conn_id))
+        if gemini_conn is None or gemini_conn.type != "gemini":
+            run.status = "failed"
+            run.error = "Gemini connection not found"
+            run.finished_at = _utcnow()
+            source_path.unlink(missing_ok=True)
+            await session.commit()
+            return {"error": run.error}
+        try:
+            gemini_secret = decrypt_secret(gemini_conn.encrypted_secret)
+        except Exception as e:  # noqa: BLE001
+            run.status = "failed"
+            run.error = f"could not decrypt gemini secret: {e}"
+            run.finished_at = _utcnow()
+            source_path.unlink(missing_ok=True)
+            await session.commit()
+            return {"error": run.error}
+        api_key = gemini_secret.get("api_key")
+        if not api_key:
+            run.status = "failed"
+            run.error = "Gemini connection has no api_key set"
+            run.finished_at = _utcnow()
+            source_path.unlink(missing_ok=True)
+            await session.commit()
+            return {"error": run.error}
+
+        prompt = str(params.get("prompt") or "")
+        model = str(params.get("model") or "").strip()
+        if not prompt or not model:
+            run.status = "failed"
+            run.error = "prompt and model are required"
+            run.finished_at = _utcnow()
+            source_path.unlink(missing_ok=True)
+            await session.commit()
+            return {"error": run.error}
+
+        # ---- Step 1: byoa (Gemini analyze) ----
+        byoa_record: dict[str, Any] = {
+            "name": "byoa",
+            "type": "gemini_analyze_upload",
+            "kind": "action",
+            "started_at": _utcnow().isoformat(),
+            "status": "running",
+            "label": f"Analyze uploaded {params.get('media_kind') or 'media'}",
+        }
+        run.status = "running"
+        run.started_at = _utcnow()
+        run.steps = [dict(byoa_record)]
+        flag_modified(run, "steps")
+        await session.commit()
+
+        try:
+            gemini_result = await asyncio.to_thread(
+                _analyze_with_gemini_sync,
+                api_key=api_key,
+                model=model,
+                prompt=prompt,
+                path=source_path,
+            )
+        except Exception as e:  # noqa: BLE001
+            logger.exception("byoa_upload analyze failed: %s", e)
+            byoa_record["status"] = "failed"
+            byoa_record["error"] = str(e)
+            byoa_record["finished_at"] = _utcnow().isoformat()
+            run.steps = [dict(byoa_record)]
+            flag_modified(run, "steps")
+            run.status = "failed"
+            run.error = str(e)
+            run.finished_at = _utcnow()
+            source_path.unlink(missing_ok=True)
+            await session.commit()
+            return {"error": str(e)}
+
+        byoa_record["status"] = "success"
+        byoa_record["output"] = gemini_result
+        byoa_record["finished_at"] = _utcnow().isoformat()
+        run.steps = [dict(byoa_record)]
+        flag_modified(run, "steps")
+        run.output = gemini_result
+        await session.commit()
+
+        # ---- Step 2 (optional): helix preview ----
+        helix_uid = params.get("helix_event_type_uid")
+        conn_id_raw = params.get("connection_id")
+        if not helix_uid or not conn_id_raw:
+            # No paired template — done. Drop the upload file and
+            # mark success.
+            run.status = "success"
+            run.finished_at = _utcnow()
+            source_path.unlink(missing_ok=True)
+            await session.commit()
+            return {"status": "success"}
+
+        preview_record: dict[str, Any] = {
+            "name": "helix_preview",
+            "type": "verkada_helix_event_preview",
+            "kind": "action",
+            "started_at": _utcnow().isoformat(),
+            "status": "running",
+            "label": "Helix preview (dry run — not posted)",
+        }
+        run.steps = [dict(byoa_record), dict(preview_record)]
+        flag_modified(run, "steps")
+        await session.commit()
+
+        try:
+            preview = await _compute_helix_preview(
+                session,
+                connection_id=UUID(conn_id_raw),
+                event_type_uid=str(helix_uid),
+                gemini_json=gemini_result.get("json"),
+                gemini_text=str(gemini_result.get("text") or ""),
+                helix_attribute_mapping=params.get("helix_attribute_mapping"),
+                helix_attribute=params.get("helix_attribute"),
+                camera_id=None,
+                inline_schema=params.get("helix_event_schema"),
+            )
+        except Exception as e:  # noqa: BLE001
+            logger.exception("byoa_upload helix preview failed: %s", e)
+            preview_record["status"] = "failed"
+            preview_record["error"] = str(e)
+            preview_record["finished_at"] = _utcnow().isoformat()
+            run.steps = [dict(byoa_record), dict(preview_record)]
+            flag_modified(run, "steps")
+            # Don't fail the whole run — the analyze succeeded, the
+            # preview is best-effort. Mark the run as "success" and
+            # let the operator see the preview step's error.
+            run.status = "success"
+            run.finished_at = _utcnow()
+            source_path.unlink(missing_ok=True)
+            await session.commit()
+            return {"status": "success", "warning": f"preview failed: {e}"}
+
+        # Shape the preview output so the Runs page can reuse the same
+        # extraction path as ``verkada_helix_event`` real posts: read
+        # ``output.request_body.attributes``. The extra dry_run flag at
+        # the top level is what HelixPostSummary will switch on to
+        # render the alternate "would have posted" header.
+        preview_record["status"] = "success"
+        preview_record["output"] = {
+            "dry_run": True,
+            "request_body": {
+                "event_type_uid": preview["event_type_uid"],
+                "camera_id": preview["camera_id"],
+                "time_ms": preview["time_ms"],
+                "attributes": preview["attributes"],
+            },
+            "event_schema": preview["event_schema"],
+        }
+        preview_record["finished_at"] = _utcnow().isoformat()
+        run.steps = [dict(byoa_record), dict(preview_record)]
+        flag_modified(run, "steps")
+        run.status = "success"
+        run.finished_at = _utcnow()
+        source_path.unlink(missing_ok=True)
+        await session.commit()
+        return {"status": "success"}
+
+
 class WorkerSettings:
     redis_settings = RedisSettings.from_dsn(settings.redis_url)
-    functions = [run_flow, run_byoa]
+    functions = [run_flow, run_byoa, run_byoa_upload]
     cron_jobs = [
         cron(sync_verkada_cameras_cron, hour=3, minute=17, run_at_startup=False),
         cron(

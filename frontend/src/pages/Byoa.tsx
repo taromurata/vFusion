@@ -72,29 +72,6 @@ const GEMINI_MODELS: ModelChoice[] = [
 ];
 
 
-// Shape of the /api/byoa/dry-run response. Mirrors the backend
-// pydantic models exactly — kept inline (not in api.ts) because the
-// Workbench is the only consumer and the helix preview payload is
-// nontrivial.
-interface DryRunResponse {
-  gemini: {
-    text: string;
-    json: unknown;
-    model_used: string;
-    upload_secs: number;
-    generate_secs: number;
-  };
-  helix_preview: {
-    event_type_uid: string;
-    camera_id: string;
-    time_ms: number;
-    attributes: Record<string, unknown>;
-    event_schema: Record<string, string>;
-    dry_run: boolean;
-  } | null;
-  media_kind: "video" | "image";
-}
-
 
 // Starting prompt is empty so the textarea reads as a clean
 // invitation ("write your own analytic"). The old auto-filled
@@ -196,15 +173,6 @@ export default function Byoa() {
   const [uploadDurationSec, setUploadDurationSec] = useState<number | null>(
     null,
   );
-  // Result of the most recent dry-run analysis. Held in component
-  // state (not react-query) because dry-runs are one-shot — there's
-  // nothing meaningful to refetch and persisting between mode toggles
-  // would just confuse the operator. Cleared whenever the user
-  // switches back to camera mode or picks a new file.
-  const [dryRunResult, setDryRunResult] = useState<DryRunResponse | null>(
-    null,
-  );
-
   const [cameraId, setCameraId] = useState("");
   const [onlineOnly, setOnlineOnly] = useState(true);
   const [mode, setMode] = useState<"live" | "historical">("live");
@@ -449,17 +417,20 @@ export default function Byoa() {
   });
 
   /**
-   * Upload-mode dispatch — sends the file + prompt to ``/api/byoa/dry-run``
-   * and stores the result in component state so the panel below the form
-   * can render the Gemini output (and, when a paired prompt template is
-   * picked, the Helix preview that would have been POSTed).
+   * Upload-mode dispatch — sends the file + prompt to ``/api/byoa/dry-run``.
+   * The backend streams the file to a shared volume, creates a Run row,
+   * and enqueues the worker job; this returns the new run_id and we
+   * navigate to /runs so the operator watches progress (Gemini upload
+   * → analyze → optional Helix preview) on the same Runs page that
+   * already renders camera-mode flows.
    *
-   * Uses the raw ``fetch`` API rather than ``apiPost`` because the latter
-   * sets ``Content-Type: application/json``, which would break the
-   * multipart upload by mis-encoding the boundary.
+   * Uses raw ``fetch`` rather than ``apiPost`` because the latter sets
+   * ``Content-Type: application/json``, which would break the multipart
+   * upload by mis-encoding the boundary. Goes through ``API_BASE`` so
+   * the request hits the backend on :18080 in dev (Vite has no proxy).
    */
   const dryRun = useMutation({
-    mutationFn: async (): Promise<DryRunResponse> => {
+    mutationFn: async (): Promise<{ run_id: string }> => {
       if (!uploadFile) throw new Error("Pick a file first.");
       if (!geminiConnId) throw new Error("Pick a Gemini connection.");
       if (!prompt.trim()) throw new Error("Prompt is required.");
@@ -524,11 +495,11 @@ export default function Byoa() {
         }
         throw new Error(detail || `Dry-run failed (${res.status})`);
       }
-      return (await res.json()) as DryRunResponse;
+      return (await res.json()) as { run_id: string };
     },
-    onSuccess: (data) => {
-      setDryRunResult(data);
+    onSuccess: (res) => {
       setErr(null);
+      navigate(`/runs?selected=${res.run_id}`);
     },
     onError: (e: Error) => setErr(e.message),
   });
@@ -597,7 +568,6 @@ export default function Byoa() {
             tagline="Pull a clip or live frame from a real camera. Posts to Helix when configured."
             onClick={() => {
               setSource("camera");
-              setDryRunResult(null);
             }}
           />
           <SourceCard
@@ -608,7 +578,6 @@ export default function Byoa() {
             badge="DRY RUN"
             onClick={() => {
               setSource("upload");
-              setDryRunResult(null);
             }}
           />
         </div>
@@ -625,7 +594,6 @@ export default function Byoa() {
               onChange={(e) => {
                 const f = e.target.files?.[0] ?? null;
                 setUploadFile(f);
-                setDryRunResult(null);
                 setUploadDurationSec(null);
                 if (f && f.type.startsWith("video/")) {
                   // Probe video duration so the cost estimate is real
@@ -1184,12 +1152,6 @@ export default function Byoa() {
         </div>
       </Card>
 
-      {source === "upload" && dryRunResult && (
-        <DryRunResultPanel
-          result={dryRunResult}
-          showHelixPreview={!!pickedTemplate?.helix_event_type}
-        />
-      )}
 
       <p className="text-xs text-slate-500">
         Each run shows up under the Runs tab with the captured clip/image,
@@ -1362,120 +1324,6 @@ function ModeBtn({
   );
 }
 
-
-
-/**
- * Renders the result of a successful dry-run.
- *
- * Two cards stacked: the Gemini output (always shown), and the Helix
- * preview (shown only when ``showHelixPreview`` is true, i.e. the user
- * picked a paired prompt template). The Helix preview deliberately
- * mirrors the shape of what ``verkada_helix_event`` would POST so an
- * operator can iterate on a prompt + mapping using their own sample
- * media and *see* exactly what'll land in Command — but without
- * actually creating an event.
- *
- * ``showHelixPreview`` is wired separately from
- * ``result.helix_preview`` so that custom-prompt dry-runs can return
- * the preview field (the backend doesn't know whether the operator
- * picked a template) but we suppress it in the UI per the
- * "templates-only" rule.
- */
-function DryRunResultPanel({
-  result,
-  showHelixPreview,
-}: {
-  result: DryRunResponse;
-  showHelixPreview: boolean;
-}) {
-  return (
-    <div className="space-y-3">
-      {/* Persistent dry-run banner. Keep this visually loud so the
-          operator never confuses an upload-mode preview with a real
-          flow run that posted to Helix. */}
-      <div className="rounded-md border border-amber-700/60 bg-amber-950/40 px-3 py-2 text-xs text-amber-200">
-        <strong className="text-amber-100">Dry run</strong> — the file was
-        sent to Gemini and discarded. Nothing was posted to Helix and no
-        run was recorded.
-      </div>
-
-      <Card>
-        <div className="text-xs font-semibold uppercase tracking-wider text-slate-400 mb-2">
-          Gemini output
-        </div>
-        <div className="text-[11px] text-slate-500 mb-2">
-          {result.gemini.model_used} · upload {result.gemini.upload_secs}s · generate{" "}
-          {result.gemini.generate_secs}s · {result.media_kind}
-        </div>
-        {result.gemini.text ? (
-          <pre className="whitespace-pre-wrap font-mono text-xs bg-slate-950 border border-white/10 rounded p-3 text-slate-100">
-            {result.gemini.text}
-          </pre>
-        ) : (
-          <div className="text-xs text-slate-500 italic">(empty response)</div>
-        )}
-        {result.gemini.json !== null && result.gemini.json !== undefined && (
-          <div className="mt-3">
-            <div className="text-[11px] uppercase tracking-wider text-slate-400 mb-1">
-              Parsed JSON
-            </div>
-            <pre className="whitespace-pre-wrap font-mono text-xs bg-slate-950 border border-white/10 rounded p-3 text-emerald-200">
-              {JSON.stringify(result.gemini.json, null, 2)}
-            </pre>
-          </div>
-        )}
-      </Card>
-
-      {showHelixPreview && result.helix_preview && (
-        <Card>
-          <div className="text-xs font-semibold uppercase tracking-wider text-slate-400 mb-2">
-            Helix preview
-          </div>
-          <div className="text-[11px] text-slate-500 mb-3">
-            This is the exact payload a real flow run would POST to{" "}
-            <code className="text-slate-300">verkada_helix_event</code>. In
-            dry-run we stop here — the preview lets you verify the mapping
-            before wiring the prompt into a flow.
-          </div>
-          <div className="space-y-1.5 text-xs font-mono">
-            <div>
-              <span className="text-slate-500">event_type_uid: </span>
-              <span className="text-slate-100">
-                {result.helix_preview.event_type_uid}
-              </span>
-            </div>
-            <div>
-              <span className="text-slate-500">camera_id: </span>
-              <span className="text-slate-400 italic">
-                {result.helix_preview.camera_id}
-              </span>
-            </div>
-            <div>
-              <span className="text-slate-500">time_ms: </span>
-              <span className="text-slate-100">{result.helix_preview.time_ms}</span>
-            </div>
-            <div className="pt-2">
-              <span className="text-slate-500">attributes:</span>
-              <pre className="mt-1 whitespace-pre-wrap text-xs bg-slate-950 border border-white/10 rounded p-3 text-emerald-200">
-                {JSON.stringify(result.helix_preview.attributes, null, 2)}
-              </pre>
-            </div>
-          </div>
-        </Card>
-      )}
-
-      {showHelixPreview && !result.helix_preview && (
-        <Card>
-          <div className="text-xs text-slate-400">
-            Helix preview unavailable — the paired event type has no schema
-            on file. Sync helix on the Verkada connection (or create the
-            type via the "+ New" button) and re-run.
-          </div>
-        </Card>
-      )}
-    </div>
-  );
-}
 
 
 /**

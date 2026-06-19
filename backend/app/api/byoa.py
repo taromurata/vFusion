@@ -17,23 +17,26 @@ operators can iterate on a prompt + Helix mapping using their own
 sample footage before committing to a real flow.
 """
 
-import asyncio
 import json as _json
 import logging
-import tempfile
-import time
+import os
 from pathlib import Path
 from typing import Any, Literal
-from uuid import UUID
+from uuid import UUID, uuid4
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Request, UploadFile
 from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.crypto import decrypt_secret
 from app.db import get_session
 from app.models import Connection, GeminiPricing, Run, VerkadaHelixEventType
+
+
+# Shared volume between backend + worker — the uploaded file lives here
+# until the worker job picks it up. Matches the ``webhook_assets``
+# volume mount declared in docker-compose.yml.
+BYOA_UPLOAD_ROOT = Path(os.environ.get("BYOA_UPLOAD_DIR", "/app/data/byoa-uploads"))
 
 
 logger = logging.getLogger(__name__)
@@ -395,29 +398,14 @@ def _resolve_output_ref(template: str, gemini_json: Any, gemini_text: str) -> An
     return template
 
 
-class DryRunGeminiResult(BaseModel):
-    text: str
-    json: Any = None
-    model_used: str
-    upload_secs: float
-    generate_secs: float
-
-
-class DryRunHelixPreview(BaseModel):
-    event_type_uid: str
-    camera_id: str
-    time_ms: int
-    attributes: dict[str, Any]
-    # ``event_schema`` (not ``schema``) — Pydantic v2 reserves ``schema``
-    # as a deprecated BaseModel class method, and a field of that name
-    # produces a noisy UserWarning at startup.
-    event_schema: dict[str, str]
-    dry_run: bool = True
-
-
 class DryRunResponse(BaseModel):
-    gemini: DryRunGeminiResult
-    helix_preview: DryRunHelixPreview | None = None
+    """Returned to the frontend as soon as the upload finishes streaming
+    to disk and a Run row is created. The actual Gemini analyze + Helix
+    preview compute happens asynchronously in the worker — the
+    frontend navigates to /runs?selected=<run_id> and the Runs page
+    polls the run as it progresses, same as a camera-mode flow."""
+
+    run_id: UUID
     media_kind: Literal["video", "image"]
 
 
@@ -456,14 +444,13 @@ async def get_pricing(
 
 @router.post("/dry-run", response_model=DryRunResponse)
 async def dry_run(
+    request: Request,
     file: UploadFile = File(...),
     gemini_connection_id: UUID = Form(...),
     prompt: str = Form(...),
     model: str = Form(...),
     # Optional Helix preview wiring — frontend only sends these when a
-    # paired prompt template is selected. Without them the response
-    # carries ``helix_preview: None`` and the UI just shows the Gemini
-    # output.
+    # paired prompt template is selected.
     connection_id: UUID | None = Form(None),
     helix_event_type_uid: str | None = Form(None),
     # Both helix_attribute_mapping (multi-field paired path) and
@@ -478,23 +465,42 @@ async def dry_run(
     helix_event_schema_json: str | None = Form(None),
     session: AsyncSession = Depends(get_session),
 ) -> DryRunResponse:
-    # ---- Validate Gemini connection ----
+    """Stream the upload to a shared-volume path, create a Run row, and
+    enqueue the worker job that does the actual Gemini analyze + Helix
+    preview compute. Returns the new run_id so the frontend can
+    navigate to /runs?selected=<run_id> and watch progress live.
+
+    Doing the analyze work in the worker (rather than synchronously in
+    this endpoint) lets:
+
+      - The Runs page render the per-phase progress checklist for
+        upload runs identically to camera-mode runs.
+      - 100MB uploads not occupy an HTTP request slot for a minute.
+      - The operator close the tab and come back to the result.
+    """
+    # ---- Validate Gemini connection (still need to exist; secret stays
+    # encrypted — the worker decrypts at run time) ----
     gemini = await session.get(Connection, gemini_connection_id)
     if gemini is None or gemini.type != "gemini":
         raise HTTPException(status_code=404, detail="Gemini connection not found")
-    try:
-        gemini_secret = decrypt_secret(gemini.encrypted_secret)
-    except Exception as e:
-        raise HTTPException(status_code=400, detail=f"could not decrypt gemini secret: {e}")
-    api_key = gemini_secret.get("api_key")
-    if not api_key:
-        raise HTTPException(
-            status_code=400, detail="Gemini connection has no api_key set"
-        )
     if not prompt.strip():
         raise HTTPException(status_code=400, detail="prompt is required")
 
-    # ---- Validate upload ----
+    # ---- Validate Verkada connection (optional, but if helix preview
+    # requested it must exist) ----
+    if helix_event_type_uid and connection_id is None:
+        raise HTTPException(
+            status_code=400,
+            detail="connection_id is required when helix_event_type_uid is set",
+        )
+    if connection_id is not None:
+        verkada = await session.get(Connection, connection_id)
+        if verkada is None or verkada.type != "verkada":
+            raise HTTPException(
+                status_code=404, detail="Verkada connection not found"
+            )
+
+    # ---- Validate upload mime ----
     content_type = (file.content_type or "").lower()
     if content_type and content_type not in DRY_RUN_ALLOWED_MIMES:
         raise HTTPException(
@@ -508,14 +514,40 @@ async def dry_run(
         "video" if content_type.startswith("video/") else "image"
     )
 
-    # ---- Stream to temp file with a hard size cap ----
+    # ---- Parse the optional helix-preview JSON params up-front so the
+    # worker doesn't have to re-validate ----
+    mapping_parsed: dict[str, str] | None = None
+    if helix_attribute_mapping_json:
+        try:
+            parsed = _json.loads(helix_attribute_mapping_json)
+            if isinstance(parsed, dict):
+                mapping_parsed = {str(k): str(v) for k, v in parsed.items()}
+        except (ValueError, TypeError):
+            raise HTTPException(
+                status_code=400,
+                detail="helix_attribute_mapping_json is not valid JSON",
+            )
+    inline_schema_parsed: dict[str, str] | None = None
+    if helix_event_schema_json:
+        try:
+            parsed = _json.loads(helix_event_schema_json)
+            if isinstance(parsed, dict):
+                inline_schema_parsed = {str(k): str(v) for k, v in parsed.items()}
+        except (ValueError, TypeError):
+            raise HTTPException(
+                status_code=400,
+                detail="helix_event_schema_json is not valid JSON",
+            )
+
+    # ---- Stream to the shared volume with a hard size cap ----
+    BYOA_UPLOAD_ROOT.mkdir(parents=True, exist_ok=True)
     suffix = Path(file.filename or "upload").suffix or (
         ".mp4" if media_kind == "video" else ".jpg"
     )
-    tmp = Path(tempfile.mkstemp(suffix=suffix, prefix="vfusion-dryrun-")[1])
+    upload_path = BYOA_UPLOAD_ROOT / f"{uuid4().hex}{suffix}"
+    bytes_written = 0
     try:
-        bytes_written = 0
-        with tmp.open("wb") as out:
+        with upload_path.open("wb") as out:
             while True:
                 chunk = await file.read(1024 * 1024)
                 if not chunk:
@@ -532,70 +564,56 @@ async def dry_run(
                 out.write(chunk)
         if bytes_written == 0:
             raise HTTPException(status_code=400, detail="Empty upload")
+    except HTTPException:
+        upload_path.unlink(missing_ok=True)
+        raise
+    except Exception as e:
+        upload_path.unlink(missing_ok=True)
+        raise HTTPException(status_code=500, detail=f"upload failed: {e}")
 
-        # ---- Gemini analyze ----
-        try:
-            gemini_result = await asyncio.to_thread(
-                _analyze_with_gemini_sync,
-                api_key=api_key,
-                model=model.strip(),
-                prompt=prompt,
-                path=tmp,
-            )
-        except TimeoutError as e:
-            raise HTTPException(status_code=504, detail=str(e))
-        except Exception as e:
-            raise HTTPException(status_code=502, detail=f"Gemini analyze failed: {e}")
-    finally:
-        tmp.unlink(missing_ok=True)
-
-    # ---- Optional Helix preview ----
-    helix_preview: DryRunHelixPreview | None = None
+    # ---- Create Run row + enqueue ----
+    # The worker keys off ``input.byoa_upload`` to pick this Run up via
+    # the run_byoa_upload entrypoint (separate from run_byoa, which is
+    # the camera-mode pipeline). Storing the source path + all
+    # preview-compute params on the Run makes the row self-describing
+    # for "Run it back" replays and post-mortem inspection.
+    input_blob: dict[str, Any] = {
+        "byoa_upload": True,
+        "byoa": True,  # also true — lets existing Runs-page UI treat as byoa
+        "source_path": str(upload_path),
+        "source_filename": file.filename,
+        "source_size_bytes": bytes_written,
+        "media_kind": media_kind,
+        "gemini_connection_id": str(gemini_connection_id),
+        "prompt": prompt,
+        "model": model.strip(),
+    }
     if helix_event_type_uid and connection_id is not None:
-        verkada = await session.get(Connection, connection_id)
-        if verkada is None or verkada.type != "verkada":
-            # Don't 4xx — the analysis succeeded, the preview is bonus.
-            # Log the mismatch and skip the preview.
-            logger.warning(
-                "dry-run: connection_id %s isn't a verkada connection; skipping helix preview",
-                connection_id,
-            )
-        else:
-            mapping_parsed: dict[str, str] | None = None
-            if helix_attribute_mapping_json:
-                try:
-                    parsed = _json.loads(helix_attribute_mapping_json)
-                    if isinstance(parsed, dict):
-                        mapping_parsed = {str(k): str(v) for k, v in parsed.items()}
-                except (ValueError, TypeError):
-                    logger.warning(
-                        "dry-run: helix_attribute_mapping_json wasn't valid JSON; ignoring"
-                    )
-            inline_schema_parsed: dict[str, str] | None = None
-            if helix_event_schema_json:
-                try:
-                    parsed = _json.loads(helix_event_schema_json)
-                    if isinstance(parsed, dict):
-                        inline_schema_parsed = {str(k): str(v) for k, v in parsed.items()}
-                except (ValueError, TypeError):
-                    logger.warning(
-                        "dry-run: helix_event_schema_json wasn't valid JSON; ignoring"
-                    )
-            preview = await _compute_helix_preview(
-                session,
-                connection_id=connection_id,
-                event_type_uid=helix_event_type_uid,
-                gemini_json=gemini_result["json"],
-                gemini_text=gemini_result["text"],
-                helix_attribute_mapping=mapping_parsed,
-                helix_attribute=helix_attribute,
-                camera_id=None,
-                inline_schema=inline_schema_parsed,
-            )
-            helix_preview = DryRunHelixPreview(**preview)
+        input_blob["connection_id"] = str(connection_id)
+        input_blob["helix_event_type_uid"] = helix_event_type_uid
+        if mapping_parsed:
+            input_blob["helix_attribute_mapping"] = mapping_parsed
+        if helix_attribute:
+            input_blob["helix_attribute"] = helix_attribute
+        if inline_schema_parsed:
+            input_blob["helix_event_schema"] = inline_schema_parsed
 
-    return DryRunResponse(
-        gemini=DryRunGeminiResult(**gemini_result),
-        helix_preview=helix_preview,
-        media_kind=media_kind,
+    run = Run(
+        flow_id=None,
+        webhook_event_id=None,
+        status="pending",
+        input=input_blob,
     )
+    session.add(run)
+    await session.commit()
+    await session.refresh(run)
+
+    pool = getattr(request.app.state, "arq_pool", None)
+    if pool is None:
+        # Clean up the orphan file — no worker means it'll never be
+        # processed and would just sit on disk.
+        upload_path.unlink(missing_ok=True)
+        raise HTTPException(status_code=503, detail="worker queue unavailable")
+    await pool.enqueue_job("run_byoa_upload", str(run.id))
+
+    return DryRunResponse(run_id=run.id, media_kind=media_kind)
