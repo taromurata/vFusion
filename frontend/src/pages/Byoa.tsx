@@ -545,34 +545,36 @@ export default function Byoa() {
           </Field>
         </Row>
 
-        {/* Source toggle — Camera mode runs the normal BYOA pipeline (Run
-            row, optional Helix POST); Upload mode does a dry-run against
-            uploaded media (no Run row, no POST, Helix preview only when
-            a paired template is picked). Lives right under the connection
-            row so the operator sees it before being asked to pick a
-            camera that doesn't apply in upload mode. */}
-        <Field label="Source" required>
-          <div className="flex gap-2 text-sm">
-            <ModeBtn
-              active={source === "camera"}
-              onClick={() => {
-                setSource("camera");
-                setDryRunResult(null);
-              }}
-            >
-              Verkada camera
-            </ModeBtn>
-            <ModeBtn
-              active={source === "upload"}
-              onClick={() => {
-                setSource("upload");
-                setDryRunResult(null);
-              }}
-            >
-              Upload media (dry-run)
-            </ModeBtn>
-          </div>
-        </Field>
+        {/* Source picker — primary mode-switch for the whole form, so it
+            gets dedicated card styling instead of the smaller pill-style
+            ``ModeBtn`` used for in-form sub-toggles (Live/Historical
+            etc.). Each card carries an icon + a tagline so the
+            difference between "real pipeline" and "dry-run" is
+            unmistakable at a glance — important because flipping the
+            wrong way silently changes whether anything posts to Helix. */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 -mt-1">
+          <SourceCard
+            active={source === "camera"}
+            icon="🎥"
+            title="Verkada camera"
+            tagline="Pull a clip or live frame from a real camera. Posts to Helix when configured."
+            onClick={() => {
+              setSource("camera");
+              setDryRunResult(null);
+            }}
+          />
+          <SourceCard
+            active={source === "upload"}
+            icon="📤"
+            title="Upload media"
+            tagline="Test a prompt against your own MP4 or image. Nothing posts — dry-run only."
+            badge="DRY RUN"
+            onClick={() => {
+              setSource("upload");
+              setDryRunResult(null);
+            }}
+          />
+        </div>
 
         {source === "upload" && (
           <Field
@@ -1185,6 +1187,78 @@ function Field({
       {children}
       {help && <div className="text-xs text-slate-500 mt-1">{help}</div>}
     </label>
+  );
+}
+
+
+/**
+ * Two-up card picker for the Workbench's primary Source mode-switch
+ * (Camera / Upload). Distinct from ``ModeBtn`` because:
+ *
+ *   - It's the form's top-level decision — clicking the wrong card
+ *     changes whether anything posts to Helix at all, so the affordance
+ *     gets icon + title + tagline + bigger touch target.
+ *   - Active state uses a strong sky border + outer ring + glow that
+ *     matches the canvas's selected-node treatment, so operators
+ *     internalize one "this is the active thing" pattern across the
+ *     app.
+ *   - The optional ``badge`` slot lets the Upload card call out
+ *     "DRY RUN" without burying the warning in the tagline.
+ */
+function SourceCard({
+  active,
+  icon,
+  title,
+  tagline,
+  badge,
+  onClick,
+}: {
+  active: boolean;
+  icon: string;
+  title: string;
+  tagline: string;
+  badge?: string;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={`relative text-left px-4 py-3 rounded-lg border-2 transition-all duration-150 ${
+        active
+          ? "bg-sky-950/50 border-sky-500 ring-2 ring-sky-500/30 shadow-[0_0_20px_rgba(56,189,248,0.25)]"
+          : "bg-white/5 border-white/10 hover:border-sky-500/60 hover:bg-white/10"
+      }`}
+    >
+      {badge && (
+        <span
+          className={`absolute top-2 right-2 text-[9px] font-bold tracking-wider px-1.5 py-0.5 rounded ${
+            active
+              ? "bg-amber-500/20 text-amber-200 border border-amber-500/40"
+              : "bg-white/5 text-slate-400 border border-white/15"
+          }`}
+        >
+          {badge}
+        </span>
+      )}
+      <div className="flex items-start gap-3">
+        <span className="text-2xl leading-none mt-0.5" aria-hidden>
+          {icon}
+        </span>
+        <div className="min-w-0">
+          <div
+            className={`text-sm font-semibold ${
+              active ? "text-sky-100" : "text-slate-100"
+            }`}
+          >
+            {title}
+          </div>
+          <div className="text-[11px] text-slate-400 mt-0.5 leading-snug">
+            {tagline}
+          </div>
+        </div>
+      </div>
+    </button>
   );
 }
 
