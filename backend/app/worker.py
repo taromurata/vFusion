@@ -763,14 +763,9 @@ async def run_byoa_upload(ctx: dict[str, Any], run_id: str) -> dict[str, Any]:  
     No Helix POST ever fires. The uploaded file is deleted at the end
     of the run regardless of success or failure.
     """
-    import asyncio
     from pathlib import Path
 
-    from app.api.byoa import (
-        _analyze_with_gemini_sync,
-        _compute_helix_preview,
-    )
-    from app.crypto import decrypt_secret
+    from app.api.byoa import _compute_helix_preview
 
     async with SessionLocal() as session:
         run = await session.get(Run, UUID(run_id))
@@ -792,7 +787,8 @@ async def run_byoa_upload(ctx: dict[str, Any], run_id: str) -> dict[str, Any]:  
             await session.commit()
             return {"error": run.error}
 
-        # Resolve the Gemini API key.
+        # Resolve the Gemini connection (the action will decrypt the
+        # secret itself — no need to pull the api_key here).
         try:
             gemini_conn_id = UUID(params["gemini_connection_id"])
         except (KeyError, ValueError):
@@ -810,23 +806,6 @@ async def run_byoa_upload(ctx: dict[str, Any], run_id: str) -> dict[str, Any]:  
             source_path.unlink(missing_ok=True)
             await session.commit()
             return {"error": run.error}
-        try:
-            gemini_secret = decrypt_secret(gemini_conn.encrypted_secret)
-        except Exception as e:  # noqa: BLE001
-            run.status = "failed"
-            run.error = f"could not decrypt gemini secret: {e}"
-            run.finished_at = _utcnow()
-            source_path.unlink(missing_ok=True)
-            await session.commit()
-            return {"error": run.error}
-        api_key = gemini_secret.get("api_key")
-        if not api_key:
-            run.status = "failed"
-            run.error = "Gemini connection has no api_key set"
-            run.finished_at = _utcnow()
-            source_path.unlink(missing_ok=True)
-            await session.commit()
-            return {"error": run.error}
 
         prompt = str(params.get("prompt") or "")
         model = str(params.get("model") or "").strip()
@@ -839,9 +818,25 @@ async def run_byoa_upload(ctx: dict[str, Any], run_id: str) -> dict[str, Any]:  
             return {"error": run.error}
 
         # ---- Step 1: byoa (Gemini analyze) ----
+        # Reuse the existing ``gemini_analyze_video`` action rather than
+        # hand-rolling the upload/poll/generate sequence here. That gets
+        # us the per-phase progress emission (gemini_upload →
+        # gemini_wait_active → gemini_generate) for free — identical to
+        # what camera-mode runs render on the Runs page. The action just
+        # needs a ``clip_path`` config field; we hand it the uploaded
+        # file's path on the shared volume.
+        analyze_spec = ACTIONS.get("gemini_analyze_video")
+        if analyze_spec is None:
+            run.status = "failed"
+            run.error = "gemini_analyze_video action unavailable"
+            run.finished_at = _utcnow()
+            source_path.unlink(missing_ok=True)
+            await session.commit()
+            return {"error": run.error}
+
         byoa_record: dict[str, Any] = {
             "name": "byoa",
-            "type": "gemini_analyze_upload",
+            "type": "gemini_analyze_video",
             "kind": "action",
             "started_at": _utcnow().isoformat(),
             "status": "running",
@@ -853,13 +848,22 @@ async def run_byoa_upload(ctx: dict[str, Any], run_id: str) -> dict[str, Any]:  
         flag_modified(run, "steps")
         await session.commit()
 
+        analyze_config: dict[str, Any] = {
+            "clip_path": str(source_path),
+            "prompt": prompt,
+            # gemini_analyze_video takes a comma-separated fallback
+            # chain — for the workbench we just want the operator's
+            # picked model. Single-entry chain = no fallback, deterministic.
+            "model_chain": model,
+        }
+        analyze_ctx: dict[str, Any] = {
+            "trigger": params,
+            "steps": {},
+            "_progress": _progress_for(run.id, "byoa"),
+        }
         try:
-            gemini_result = await asyncio.to_thread(
-                _analyze_with_gemini_sync,
-                api_key=api_key,
-                model=model,
-                prompt=prompt,
-                path=source_path,
+            gemini_result = await analyze_spec.run(
+                analyze_config, analyze_ctx, gemini_conn
             )
         except Exception as e:  # noqa: BLE001
             logger.exception("byoa_upload analyze failed: %s", e)
