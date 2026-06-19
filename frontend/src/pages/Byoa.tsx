@@ -71,6 +71,30 @@ const GEMINI_MODELS: ModelChoice[] = [
 ];
 
 
+// Shape of the /api/byoa/dry-run response. Mirrors the backend
+// pydantic models exactly — kept inline (not in api.ts) because the
+// Workbench is the only consumer and the helix preview payload is
+// nontrivial.
+interface DryRunResponse {
+  gemini: {
+    text: string;
+    json: unknown;
+    model_used: string;
+    upload_secs: number;
+    generate_secs: number;
+  };
+  helix_preview: {
+    event_type_uid: string;
+    camera_id: string;
+    time_ms: number;
+    attributes: Record<string, unknown>;
+    event_schema: Record<string, string>;
+    dry_run: boolean;
+  } | null;
+  media_kind: "video" | "image";
+}
+
+
 // Starting prompt is empty so the textarea reads as a clean
 // invitation ("write your own analytic"). The old auto-filled
 // safety-description prompt has been demoted to a placeholder
@@ -142,6 +166,22 @@ export default function Byoa() {
       apiGet<BuiltinTemplate[]>("/api/prompt-templates/builtins"),
     staleTime: 60_000,
   });
+
+  // ``source`` toggles the top-level input: a real Verkada camera
+  // (default, full BYOA flow with a Run row) vs an uploaded MP4 / image
+  // (dry-run only, no Run row, no Helix POST). The two modes share the
+  // prompt + Gemini connection + model picker but otherwise have
+  // disjoint inputs and disjoint output panels.
+  const [source, setSource] = useState<"camera" | "upload">("camera");
+  const [uploadFile, setUploadFile] = useState<File | null>(null);
+  // Result of the most recent dry-run analysis. Held in component
+  // state (not react-query) because dry-runs are one-shot — there's
+  // nothing meaningful to refetch and persisting between mode toggles
+  // would just confuse the operator. Cleared whenever the user
+  // switches back to camera mode or picks a new file.
+  const [dryRunResult, setDryRunResult] = useState<DryRunResponse | null>(
+    null,
+  );
 
   const [cameraId, setCameraId] = useState("");
   const [onlineOnly, setOnlineOnly] = useState(true);
@@ -386,6 +426,76 @@ export default function Byoa() {
     onError: (e: Error) => setErr(e.message),
   });
 
+  /**
+   * Upload-mode dispatch — sends the file + prompt to ``/api/byoa/dry-run``
+   * and stores the result in component state so the panel below the form
+   * can render the Gemini output (and, when a paired prompt template is
+   * picked, the Helix preview that would have been POSTed).
+   *
+   * Uses the raw ``fetch`` API rather than ``apiPost`` because the latter
+   * sets ``Content-Type: application/json``, which would break the
+   * multipart upload by mis-encoding the boundary.
+   */
+  const dryRun = useMutation({
+    mutationFn: async (): Promise<DryRunResponse> => {
+      if (!uploadFile) throw new Error("Pick a file first.");
+      if (!geminiConnId) throw new Error("Pick a Gemini connection.");
+      if (!prompt.trim()) throw new Error("Prompt is required.");
+      const fd = new FormData();
+      fd.append("file", uploadFile);
+      fd.append("gemini_connection_id", geminiConnId);
+      fd.append("prompt", prompt);
+      fd.append("model", model);
+      // Only send Helix-preview params when a paired template is
+      // picked — the user-facing rule is "templates show preview,
+      // custom prompts don't" (see Workbench training spec).
+      if (pickedTemplate?.helix_event_type && verkadaConnId) {
+        fd.append("connection_id", verkadaConnId);
+        // Prefer the resolved-on-this-org uid (when the type already
+        // exists on the connection) — that path lets the backend pull
+        // the canonical schema from the DB. Fall back to the
+        // template's embedded uid for the first-time-paired case,
+        // where the backend uses the schema we also ship inline.
+        fd.append(
+          "helix_event_type_uid",
+          helixEventTypeUid || pickedTemplate.helix_event_type.event_type_uid,
+        );
+        const mapping =
+          pickedTemplate.helix_attribute_mapping ?? restoredMapping;
+        if (mapping) {
+          fd.append("helix_attribute_mapping_json", JSON.stringify(mapping));
+        }
+        if (pickedTemplate.helix_event_type.event_schema) {
+          fd.append(
+            "helix_event_schema_json",
+            JSON.stringify(pickedTemplate.helix_event_type.event_schema),
+          );
+        }
+      }
+      const res = await fetch("/api/byoa/dry-run", {
+        method: "POST",
+        body: fd,
+        credentials: "include",
+      });
+      if (!res.ok) {
+        let detail = "";
+        try {
+          const body = (await res.json()) as { detail?: string };
+          detail = body.detail ?? "";
+        } catch {
+          detail = await res.text();
+        }
+        throw new Error(detail || `Dry-run failed (${res.status})`);
+      }
+      return (await res.json()) as DryRunResponse;
+    },
+    onSuccess: (data) => {
+      setDryRunResult(data);
+      setErr(null);
+    },
+    onError: (e: Error) => setErr(e.message),
+  });
+
   const noConnections = verkadaConns.length === 0 || geminiConns.length === 0;
 
   return (
@@ -435,6 +545,61 @@ export default function Byoa() {
           </Field>
         </Row>
 
+        {/* Source toggle — Camera mode runs the normal BYOA pipeline (Run
+            row, optional Helix POST); Upload mode does a dry-run against
+            uploaded media (no Run row, no POST, Helix preview only when
+            a paired template is picked). Lives right under the connection
+            row so the operator sees it before being asked to pick a
+            camera that doesn't apply in upload mode. */}
+        <Field label="Source" required>
+          <div className="flex gap-2 text-sm">
+            <ModeBtn
+              active={source === "camera"}
+              onClick={() => {
+                setSource("camera");
+                setDryRunResult(null);
+              }}
+            >
+              Verkada camera
+            </ModeBtn>
+            <ModeBtn
+              active={source === "upload"}
+              onClick={() => {
+                setSource("upload");
+                setDryRunResult(null);
+              }}
+            >
+              Upload media (dry-run)
+            </ModeBtn>
+          </div>
+        </Field>
+
+        {source === "upload" && (
+          <Field
+            label="Upload file"
+            required
+            help="MP4 / MOV / WebM video or JPG / PNG / WebP image. 50 MB max. The file is sent to Gemini and discarded — nothing is stored, nothing is posted to Helix."
+          >
+            <input
+              type="file"
+              accept="video/mp4,video/quicktime,video/webm,image/jpeg,image/png,image/webp"
+              onChange={(e) => {
+                const f = e.target.files?.[0] ?? null;
+                setUploadFile(f);
+                setDryRunResult(null);
+              }}
+              className="block w-full text-sm text-slate-300 file:mr-3 file:py-1.5 file:px-3 file:rounded file:border-0 file:bg-sky-700 file:hover:bg-sky-600 file:text-white file:text-sm file:cursor-pointer"
+            />
+            {uploadFile && (
+              <div className="text-[11px] text-slate-400 mt-1.5">
+                {uploadFile.name} — {(uploadFile.size / (1024 * 1024)).toFixed(1)} MB
+              </div>
+            )}
+          </Field>
+        )}
+
+        {source === "camera" && (
+        <>
         <Field
           label="Camera"
           required
@@ -592,6 +757,47 @@ export default function Byoa() {
             </Row>
           </>
         )}
+        </>
+        )}
+
+        {/* Model picker is shown in upload mode too — the Footage Row
+            above already includes it for camera mode. Kept as its own
+            Field rather than mirroring the camera-mode Row layout
+            because upload mode has nothing else to put next to it. */}
+        {source === "upload" && (
+          <Field label="Model" required>
+            <div className="space-y-1.5">
+              <select
+                value={model}
+                onChange={(e) => setModel(e.target.value)}
+                className="w-full px-2 py-1.5 rounded bg-white/5 border border-white/15 text-sm"
+              >
+                {GEMINI_MODELS.map((m) => {
+                  const bits = [m.label, m.tier];
+                  if (m.preview) bits.push("BETA");
+                  return (
+                    <option key={m.value} value={m.value}>
+                      {bits.join(" · ")}
+                    </option>
+                  );
+                })}
+              </select>
+              {(() => {
+                const picked = GEMINI_MODELS.find((m) => m.value === model);
+                if (!picked) return null;
+                return (
+                  <div className="flex items-center gap-1.5 flex-wrap">
+                    <CostChip tier={picked.tier} />
+                    {picked.preview && <BetaChip />}
+                    <span className="text-[11px] text-slate-400">
+                      {picked.tagline}
+                    </span>
+                  </div>
+                );
+              })()}
+            </div>
+          </Field>
+        )}
 
         <Field label="Prompt" required>
           {allTemplates.length > 0 && (
@@ -711,7 +917,7 @@ export default function Byoa() {
             Post switch + pre-selects the matching event type when a
             Helix-paired prompt is chosen, so most operators never need
             to touch the toggle manually. */}
-        {(pickedTemplate || (prompt.trim() !== "" && prompt !== DEFAULT_PROMPT)) && (
+        {source === "camera" && (pickedTemplate || (prompt.trim() !== "" && prompt !== DEFAULT_PROMPT)) && (
         <div className="border-t border-white/10 pt-4 space-y-3">
           <label className="flex items-center gap-2 cursor-pointer">
             <input
@@ -861,28 +1067,52 @@ export default function Byoa() {
         )}
 
         <div className="flex justify-end pt-2">
-          <button
-            onClick={() => {
-              setErr(null);
-              if (!verkadaConnId) return setErr("Pick a Verkada connection.");
-              if (!geminiConnId) return setErr("Pick a Gemini connection.");
-              if (!cameraId.trim()) return setErr("Pick a camera.");
-              if (!prompt.trim()) return setErr("Prompt is required.");
-              if (mode === "historical" && !startEpoch)
-                return setErr("Pick a start time for historical mode.");
-              if (postToHelix && !helixEventTypeUid)
-                return setErr("Pick a Helix event type or turn off 'Post to Helix'.");
-              if (postToHelix && !helixAttribute)
-                return setErr("Pick which Helix attribute to write the AI text into.");
-              run.mutate();
-            }}
-            disabled={run.isPending || noConnections}
-            className="text-sm px-4 py-2 rounded-md bg-sky-700 hover:bg-sky-600 text-white disabled:opacity-50"
-          >
-            {run.isPending ? "Starting…" : "Brew it"}
-          </button>
+          {source === "camera" ? (
+            <button
+              onClick={() => {
+                setErr(null);
+                if (!verkadaConnId) return setErr("Pick a Verkada connection.");
+                if (!geminiConnId) return setErr("Pick a Gemini connection.");
+                if (!cameraId.trim()) return setErr("Pick a camera.");
+                if (!prompt.trim()) return setErr("Prompt is required.");
+                if (mode === "historical" && !startEpoch)
+                  return setErr("Pick a start time for historical mode.");
+                if (postToHelix && !helixEventTypeUid)
+                  return setErr("Pick a Helix event type or turn off 'Post to Helix'.");
+                if (postToHelix && !helixAttribute)
+                  return setErr("Pick which Helix attribute to write the AI text into.");
+                run.mutate();
+              }}
+              disabled={run.isPending || noConnections}
+              className="text-sm px-4 py-2 rounded-md bg-sky-700 hover:bg-sky-600 text-white disabled:opacity-50"
+            >
+              {run.isPending ? "Starting…" : "Brew it"}
+            </button>
+          ) : (
+            <button
+              onClick={() => {
+                setErr(null);
+                if (!uploadFile) return setErr("Pick a file to upload.");
+                if (!geminiConnId) return setErr("Pick a Gemini connection.");
+                if (!prompt.trim()) return setErr("Prompt is required.");
+                dryRun.mutate();
+              }}
+              disabled={dryRun.isPending || geminiConns.length === 0}
+              className="text-sm px-4 py-2 rounded-md bg-sky-700 hover:bg-sky-600 text-white disabled:opacity-50"
+              title="Sends the file to Gemini and (for paired templates) computes a Helix preview. Nothing is posted to Verkada."
+            >
+              {dryRun.isPending ? "Analyzing…" : "Run dry-run"}
+            </button>
+          )}
         </div>
       </Card>
+
+      {source === "upload" && dryRunResult && (
+        <DryRunResultPanel
+          result={dryRunResult}
+          showHelixPreview={!!pickedTemplate?.helix_event_type}
+        />
+      )}
 
       <p className="text-xs text-slate-500">
         Each run shows up under the Runs tab with the captured clip/image,
@@ -980,5 +1210,120 @@ function ModeBtn({
     >
       {children}
     </button>
+  );
+}
+
+
+
+/**
+ * Renders the result of a successful dry-run.
+ *
+ * Two cards stacked: the Gemini output (always shown), and the Helix
+ * preview (shown only when ``showHelixPreview`` is true, i.e. the user
+ * picked a paired prompt template). The Helix preview deliberately
+ * mirrors the shape of what ``verkada_helix_event`` would POST so an
+ * operator can iterate on a prompt + mapping using their own sample
+ * media and *see* exactly what'll land in Command — but without
+ * actually creating an event.
+ *
+ * ``showHelixPreview`` is wired separately from
+ * ``result.helix_preview`` so that custom-prompt dry-runs can return
+ * the preview field (the backend doesn't know whether the operator
+ * picked a template) but we suppress it in the UI per the
+ * "templates-only" rule.
+ */
+function DryRunResultPanel({
+  result,
+  showHelixPreview,
+}: {
+  result: DryRunResponse;
+  showHelixPreview: boolean;
+}) {
+  return (
+    <div className="space-y-3">
+      {/* Persistent dry-run banner. Keep this visually loud so the
+          operator never confuses an upload-mode preview with a real
+          flow run that posted to Helix. */}
+      <div className="rounded-md border border-amber-700/60 bg-amber-950/40 px-3 py-2 text-xs text-amber-200">
+        <strong className="text-amber-100">Dry run</strong> — the file was
+        sent to Gemini and discarded. Nothing was posted to Helix and no
+        run was recorded.
+      </div>
+
+      <Card>
+        <div className="text-xs font-semibold uppercase tracking-wider text-slate-400 mb-2">
+          Gemini output
+        </div>
+        <div className="text-[11px] text-slate-500 mb-2">
+          {result.gemini.model_used} · upload {result.gemini.upload_secs}s · generate{" "}
+          {result.gemini.generate_secs}s · {result.media_kind}
+        </div>
+        {result.gemini.text ? (
+          <pre className="whitespace-pre-wrap font-mono text-xs bg-slate-950 border border-white/10 rounded p-3 text-slate-100">
+            {result.gemini.text}
+          </pre>
+        ) : (
+          <div className="text-xs text-slate-500 italic">(empty response)</div>
+        )}
+        {result.gemini.json !== null && result.gemini.json !== undefined && (
+          <div className="mt-3">
+            <div className="text-[11px] uppercase tracking-wider text-slate-400 mb-1">
+              Parsed JSON
+            </div>
+            <pre className="whitespace-pre-wrap font-mono text-xs bg-slate-950 border border-white/10 rounded p-3 text-emerald-200">
+              {JSON.stringify(result.gemini.json, null, 2)}
+            </pre>
+          </div>
+        )}
+      </Card>
+
+      {showHelixPreview && result.helix_preview && (
+        <Card>
+          <div className="text-xs font-semibold uppercase tracking-wider text-slate-400 mb-2">
+            Helix preview
+          </div>
+          <div className="text-[11px] text-slate-500 mb-3">
+            This is the exact payload a real flow run would POST to{" "}
+            <code className="text-slate-300">verkada_helix_event</code>. In
+            dry-run we stop here — the preview lets you verify the mapping
+            before wiring the prompt into a flow.
+          </div>
+          <div className="space-y-1.5 text-xs font-mono">
+            <div>
+              <span className="text-slate-500">event_type_uid: </span>
+              <span className="text-slate-100">
+                {result.helix_preview.event_type_uid}
+              </span>
+            </div>
+            <div>
+              <span className="text-slate-500">camera_id: </span>
+              <span className="text-slate-400 italic">
+                {result.helix_preview.camera_id}
+              </span>
+            </div>
+            <div>
+              <span className="text-slate-500">time_ms: </span>
+              <span className="text-slate-100">{result.helix_preview.time_ms}</span>
+            </div>
+            <div className="pt-2">
+              <span className="text-slate-500">attributes:</span>
+              <pre className="mt-1 whitespace-pre-wrap text-xs bg-slate-950 border border-white/10 rounded p-3 text-emerald-200">
+                {JSON.stringify(result.helix_preview.attributes, null, 2)}
+              </pre>
+            </div>
+          </div>
+        </Card>
+      )}
+
+      {showHelixPreview && !result.helix_preview && (
+        <Card>
+          <div className="text-xs text-slate-400">
+            Helix preview unavailable — the paired event type has no schema
+            on file. Sync helix on the Verkada connection (or create the
+            type via the "+ New" button) and re-run.
+          </div>
+        </Card>
+      )}
+    </div>
   );
 }
