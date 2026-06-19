@@ -795,7 +795,6 @@ async def run_byoa_upload(ctx: dict[str, Any], run_id: str) -> dict[str, Any]:  
             run.status = "failed"
             run.error = "invalid gemini_connection_id"
             run.finished_at = _utcnow()
-            source_path.unlink(missing_ok=True)
             await session.commit()
             return {"error": run.error}
         gemini_conn = await _resolve_connection(session, str(gemini_conn_id))
@@ -803,7 +802,6 @@ async def run_byoa_upload(ctx: dict[str, Any], run_id: str) -> dict[str, Any]:  
             run.status = "failed"
             run.error = "Gemini connection not found"
             run.finished_at = _utcnow()
-            source_path.unlink(missing_ok=True)
             await session.commit()
             return {"error": run.error}
 
@@ -813,7 +811,6 @@ async def run_byoa_upload(ctx: dict[str, Any], run_id: str) -> dict[str, Any]:  
             run.status = "failed"
             run.error = "prompt and model are required"
             run.finished_at = _utcnow()
-            source_path.unlink(missing_ok=True)
             await session.commit()
             return {"error": run.error}
 
@@ -830,7 +827,6 @@ async def run_byoa_upload(ctx: dict[str, Any], run_id: str) -> dict[str, Any]:  
             run.status = "failed"
             run.error = "gemini_analyze_video action unavailable"
             run.finished_at = _utcnow()
-            source_path.unlink(missing_ok=True)
             await session.commit()
             return {"error": run.error}
 
@@ -875,9 +871,19 @@ async def run_byoa_upload(ctx: dict[str, Any], run_id: str) -> dict[str, Any]:  
             run.status = "failed"
             run.error = str(e)
             run.finished_at = _utcnow()
-            source_path.unlink(missing_ok=True)
             await session.commit()
             return {"error": str(e)}
+
+        # ``gemini_analyze_video`` always returns the source as
+        # ``clip_path`` — which the Runs page renders as a <video>. For
+        # still-image uploads we rename it to ``image_path`` so the same
+        # page renders an <img> tag instead (and the /image endpoint
+        # serves from IMAGE_ROOT). Same content, semantically correct
+        # field name, no Runs.tsx changes required.
+        if params.get("media_kind") == "image":
+            cp = gemini_result.pop("clip_path", None)
+            if cp:
+                gemini_result["image_path"] = cp
 
         byoa_record["status"] = "success"
         byoa_record["output"] = gemini_result
@@ -895,7 +901,6 @@ async def run_byoa_upload(ctx: dict[str, Any], run_id: str) -> dict[str, Any]:  
             # mark success.
             run.status = "success"
             run.finished_at = _utcnow()
-            source_path.unlink(missing_ok=True)
             await session.commit()
             return {"status": "success"}
 
@@ -935,7 +940,6 @@ async def run_byoa_upload(ctx: dict[str, Any], run_id: str) -> dict[str, Any]:  
             # let the operator see the preview step's error.
             run.status = "success"
             run.finished_at = _utcnow()
-            source_path.unlink(missing_ok=True)
             await session.commit()
             return {"status": "success", "warning": f"preview failed: {e}"}
 
@@ -960,7 +964,6 @@ async def run_byoa_upload(ctx: dict[str, Any], run_id: str) -> dict[str, Any]:  
         flag_modified(run, "steps")
         run.status = "success"
         run.finished_at = _utcnow()
-        source_path.unlink(missing_ok=True)
         await session.commit()
         return {"status": "success"}
 

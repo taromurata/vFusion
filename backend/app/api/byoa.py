@@ -19,7 +19,6 @@ sample footage before committing to a real flow.
 
 import json as _json
 import logging
-import os
 import time
 from pathlib import Path
 from typing import Any, Literal
@@ -30,14 +29,21 @@ from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.connectors.verkada.footage import CLIP_ROOT, IMAGE_ROOT
 from app.db import get_session
 from app.models import Connection, GeminiPricing, Run, VerkadaHelixEventType
 
 
-# Shared volume between backend + worker — the uploaded file lives here
-# until the worker job picks it up. Matches the ``webhook_assets``
-# volume mount declared in docker-compose.yml.
-BYOA_UPLOAD_ROOT = Path(os.environ.get("BYOA_UPLOAD_DIR", "/app/data/byoa-uploads"))
+# Workbench uploads land in the same directories camera-mode grabs use
+# (CLIP_ROOT / IMAGE_ROOT), so the existing /api/runs/{id}/clip and
+# /image endpoints serve them with no special-casing — same playback
+# UI for "I uploaded this file" as for "we pulled it from the camera."
+# The existing cleanup cron sweeps both directories on the retention
+# windows configured in Settings, so we don't need a separate upload
+# sweep either.
+#
+# The dir-by-env override is kept (via the underlying footage constants
+# in footage.py) so operators with non-default layouts still work.
 
 
 logger = logging.getLogger(__name__)
@@ -540,12 +546,18 @@ async def dry_run(
                 detail="helix_event_schema_json is not valid JSON",
             )
 
-    # ---- Stream to the shared volume with a hard size cap ----
-    BYOA_UPLOAD_ROOT.mkdir(parents=True, exist_ok=True)
+    # ---- Stream to CLIP_ROOT (for video) or IMAGE_ROOT (for still
+    # images) with a hard size cap. Writing into the same directories
+    # camera-mode grabs land in means the existing /api/runs/{id}/clip
+    # and /image playback endpoints serve uploads with zero new code,
+    # and the existing cleanup cron sweeps them on the configured
+    # retention windows. ----
+    upload_root = CLIP_ROOT if media_kind == "video" else IMAGE_ROOT
+    upload_root.mkdir(parents=True, exist_ok=True)
     suffix = Path(file.filename or "upload").suffix or (
         ".mp4" if media_kind == "video" else ".jpg"
     )
-    upload_path = BYOA_UPLOAD_ROOT / f"{uuid4().hex}{suffix}"
+    upload_path = upload_root / f"{uuid4().hex}{suffix}"
     bytes_written = 0
     try:
         with upload_path.open("wb") as out:
