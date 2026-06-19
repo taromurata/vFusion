@@ -764,6 +764,8 @@ async def run_byoa_upload(ctx: dict[str, Any], run_id: str) -> dict[str, Any]:  
     of the run regardless of success or failure.
     """
     import asyncio
+    from pathlib import Path
+
     from app.api.byoa import (
         _analyze_with_gemini_sync,
         _compute_helix_preview,
