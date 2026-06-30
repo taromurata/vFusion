@@ -363,9 +363,9 @@ Gemini's analysis doesn't just sit in the vFusion dashboard. The `verkada_helix_
 
 <p align="center"><img src="docs/images/helix-command-bear.png" alt="Helix event — animal detection with a push alert" width="420"></p>
 
-**Delivery / package summary** — a custom prompt describing what Gemini saw at the front door, written straight to Helix.
+**Door obstruction check** — Gemini scans a door-facing camera for anything blocking the egress path (boxes, pallets, stray furniture) and posts the object type, severity, and reasoning to Helix when something's in the way.
 
-<p align="center"><img src="docs/images/helix-command-delivery.png" alt="Helix event — delivery" width="420"></p>
+<p align="center"><img src="docs/images/helix-command-door-obstruction.png" alt="Helix event — door obstruction with object type, severity, and reasoning" width="420"></p>
 
 **Text extraction (OCR)** — vFusion reads sign, label, and badge text off a short clip…
 
